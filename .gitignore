@@ -1,0 +1,27 @@
+# 编译输出
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.axf
+
+# IDE 文件（STM32CubeIDE、Keil、IAR 等）
+Debug/
+Release/
+.settings/
+.project
+.cproject
+.mxproject
+*.launch
+*.ewd
+*.ewp
+*.eww
+*.dep
+
+# 临时文件
+*~
+*.swp
+*.bak
