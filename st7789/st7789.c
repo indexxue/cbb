@@ -7,6 +7,7 @@
  */
 
 #include "st7789.h"
+#include "st7789_config.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -33,10 +34,8 @@
 
 #define MADCTL_BGR 0x08U
 
-#define TX_CHUNK 4096U
-
 /** 大块像素展开缓冲（内部 SRAM，便于 SPI DMA）；避免在 `st7789_write_pixels` 栈上开大数组。 */
-static uint8_t s_rgb565_tx_chunk[TX_CHUNK];
+static uint8_t s_rgb565_tx_chunk[ST7789_TX_CHUNK];
 
 static void dc_cmd(st7789_t *dev) {
     if (dev->set_dc) {
@@ -314,7 +313,7 @@ st7789_status_t st7789_write_pixels(st7789_t *dev, const uint16_t *buf, uint32_t
     uint32_t idx = 0;
     while (idx < len) {
         uint32_t n = len - idx;
-        uint32_t max_pairs = (uint32_t)(sizeof(s_rgb565_tx_chunk) / 2U);
+        uint32_t max_pairs = ST7789_TX_CHUNK / 2U;
         if (n > max_pairs) {
             n = max_pairs;
         }

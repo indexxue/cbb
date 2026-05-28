@@ -10,13 +10,12 @@
 #include <string.h>
 
 #include "lcdfont.h"
-
-#define LCD_LINEBUF_MAX 320U
-/** 与 SPI `max_transfer_sz` 对齐的全屏纯色块填充（减少事务数，便于 DMA 吞吐）。 */
-#define LCD_FAST_FILL_BLK 32768U
+#include "st7789_config.h"
 
 static uint16_t s_linebuf[LCD_LINEBUF_MAX];
 static uint8_t s_fast_fill_blk[LCD_FAST_FILL_BLK];
+/** `lcd_fill_fast` 行模板，放静态区避免任务栈溢出（STM32 32KB SRAM） */
+static uint8_t s_linebe[LCD_LINEBUF_MAX * 2U];
 
 static void lcd_wr_rgb565(st7789_t *lcd, uint16_t color) {
     (void)st7789_write_pixels(lcd, &color, 1U);
@@ -54,7 +53,6 @@ void lcd_fill(st7789_t *lcd, uint16_t xsta, uint16_t ysta, uint16_t xend, uint16
 void lcd_fill_fast(st7789_t *lcd, uint16_t xsta, uint16_t ysta, uint16_t xend, uint16_t yend, uint16_t color) {
     uint16_t row_w;
     uint16_t row_bytes;
-    uint8_t linebe[LCD_LINEBUF_MAX * 2U];
     uint16_t i;
 
     if (lcd == NULL || !st7789_is_initialized(lcd) || xend <= xsta || yend <= ysta) {
@@ -70,8 +68,8 @@ void lcd_fill_fast(st7789_t *lcd, uint16_t xsta, uint16_t ysta, uint16_t xend, u
     }
 
     for (i = 0; i < row_w; i++) {
-        linebe[(size_t)i * 2U] = (uint8_t)(color >> 8);
-        linebe[(size_t)i * 2U + 1U] = (uint8_t)(color & 0xFFU);
+        s_linebe[(size_t)i * 2U] = (uint8_t)(color >> 8);
+        s_linebe[(size_t)i * 2U + 1U] = (uint8_t)(color & 0xFFU);
     }
 
     if (st7789_set_window(lcd, xsta, ysta, (uint16_t)(xend - 1U), (uint16_t)(yend - 1U)) != ST7789_OK) {
@@ -99,7 +97,7 @@ void lcd_fill_fast(st7789_t *lcd, uint16_t xsta, uint16_t ysta, uint16_t xend, u
                 uint32_t r;
 
                 for (r = 0; r < rows_batch; r++) {
-                    (void)memcpy(p, linebe, (size_t)row_bytes);
+                    (void)memcpy(p, s_linebe, (size_t)row_bytes);
                     p += row_bytes;
                 }
                 if (st7789_write_pixel_bytes(lcd, s_fast_fill_blk, nbytes) != ST7789_OK) {
