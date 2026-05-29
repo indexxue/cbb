@@ -52,8 +52,6 @@ static zb25vq16_status_t wait_ready(uint32_t timeout_ms)
     uint32_t start = zb25vq16_port_get_tick();
 
     while ((status & ZB25_STATUS_WIP) != 0U) {
-        zb25vq16_status_t st;
-
         zb25vq16_port_cs_low();
         if (zb25vq16_port_xfer(tx, rx, 2U) != 0) {
             zb25vq16_port_cs_high();
