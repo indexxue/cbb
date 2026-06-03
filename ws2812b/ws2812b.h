@@ -1,9 +1,14 @@
 /**
  * @file    ws2812b.h
- * @brief   WS2812B 单总线 RGB LED 驱动（ESP-IDF RMT TX，单 GPIO 级联多灯）。
+ * @brief   WS2812B RGB LED strip — MCU-agnostic pixel buffer + pluggable output backend.
  *
- * 像素缓冲区内字节顺序为 **GRB**（与 WS2812B 数据线顺序一致）。
- * `ws2812b_set_pixel_rgb` 按常见 RGB 语义写入并自动转换为 GRB。
+ * Pixel order on the wire is **GRB**. Use `ws2812b_set_pixel_rgb` for RGB semantics.
+ *
+ * Backends:
+ * - **USER**: `transmit` callback (GPIO bit-bang, DMA, PIO, etc.) receives raw GRB bytes.
+ * - **SPI**: driver expands each GRB bit to one SPI byte (8 bytes per GRB byte @ ~2.4–3.2 MHz).
+ *
+ * ESP-IDF RMT: see `ws2812b_esp32.h` / `ws2812b_esp32.c`.
  */
 
 #ifndef WS2812B_H
@@ -13,76 +18,94 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "driver/gpio.h"
-#include "esp_err.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** 默认 RMT 分辨率 10 MHz（1 tick = 0.1 µs），与官方 led_strip 示例一致 */
-#define WS2812B_DEFAULT_RESOLUTION_HZ 10000000u
+/** Default SPI codewords (1 WS2812 bit → 1 SPI byte @ ~2.4–3.2 MHz). Override via config. */
+#define WS2812B_SPI_CODEWORD0_DEFAULT 0xC0u
+#define WS2812B_SPI_CODEWORD1_DEFAULT 0xFCu
 
-typedef struct
-{
-    gpio_num_t          gpio_num;
-    uint16_t            num_leds;
-    /** RMT 分辨率（Hz）；为 0 时使用 WS2812B_DEFAULT_RESOLUTION_HZ */
-    uint32_t            resolution_hz;
-    /** RMT 符号块大小；为 0 时使用 64 */
-    size_t              mem_block_symbols;
-    /** 传输队列深度；为 0 时使用 4 */
-    uint8_t             trans_queue_depth;
+typedef enum {
+    WS2812B_OK = 0,
+    WS2812B_ERROR_PARAM,
+    WS2812B_ERROR_NOT_INIT,
+    WS2812B_ERROR_IO,
+    WS2812B_ERROR_NOMEM
+} ws2812b_status_t;
+
+typedef enum {
+    /** Board implements timing (one-wire / RMT / timer DMA …). */
+    WS2812B_BUS_USER = 0,
+    /** Expand GRB → SPI stream and call `spi_write`. */
+    WS2812B_BUS_SPI  = 1
+} ws2812b_bus_t;
+
+/**
+ * Send one GRB frame (length = 3 * num_leds). Return 0 on success.
+ * Used for USER backend (includes ESP RMT after `ws2812b_esp32_init`).
+ */
+typedef int (*ws2812b_transmit_t)(const uint8_t *grb, size_t len, void *ctx);
+
+/** Send expanded SPI buffer. Return 0 on success. */
+typedef int (*ws2812b_spi_write_t)(const uint8_t *buf, size_t len, void *ctx);
+
+typedef void (*ws2812b_platform_deinit_t)(void *platform);
+
+typedef struct {
+    uint16_t              num_leds;
+    ws2812b_bus_t         bus;
+    ws2812b_transmit_t    transmit;
+    ws2812b_spi_write_t   spi_write;
+    void                 *ctx;
+    uint8_t               spi_codeword0;
+    uint8_t               spi_codeword1;
 } ws2812b_config_t;
 
-typedef struct
-{
-    void                *chan;
-    void                *encoder;
-    uint8_t             *pixels;
-    uint16_t             num_leds;
-    uint32_t             resolution_hz;
-    bool                 initialized;
+typedef struct {
+    uint8_t                  *pixels;
+    uint8_t                  *spi_buf;
+    size_t                    spi_buf_len;
+    uint16_t                  num_leds;
+    ws2812b_bus_t             bus;
+    ws2812b_transmit_t        transmit;
+    ws2812b_spi_write_t       spi_write;
+    void                     *ctx;
+    uint8_t                   spi_codeword0;
+    uint8_t                   spi_codeword1;
+    void                     *platform;
+    ws2812b_platform_deinit_t platform_deinit;
+    bool                      initialized;
 } ws2812b_t;
 
-/**
- * @brief  创建 RMT 通道、WS2812 编码器并分配 GRB 像素缓冲。
- */
-esp_err_t ws2812b_init(ws2812b_t *dev, const ws2812b_config_t *cfg);
+ws2812b_status_t ws2812b_init_with_config(ws2812b_t *dev, const ws2812b_config_t *cfg);
 
-/**
- * @brief  释放 RMT 与像素缓冲（可重复调用：已反初始化则直接返回）。
- */
+/** USER backend: only `transmit` required. */
+ws2812b_status_t ws2812b_init_user(ws2812b_t *dev,
+                                 uint16_t num_leds,
+                                 ws2812b_transmit_t transmit,
+                                 void *ctx);
+
+/** SPI backend: 8 SPI bytes per GRB byte; set SPI clock per README. */
+ws2812b_status_t ws2812b_init_spi(ws2812b_t *dev,
+                                  uint16_t num_leds,
+                                  ws2812b_spi_write_t spi_write,
+                                  void *ctx);
+
 void ws2812b_deinit(ws2812b_t *dev);
 
 bool ws2812b_is_initialized(const ws2812b_t *dev);
 
-/**
- * @brief  设置某一灯的 RGB（内部转换为 GRB，仅改缓冲，需调用 ws2812b_refresh 输出）。
- */
-esp_err_t ws2812b_set_pixel_rgb(ws2812b_t *dev, uint16_t index, uint8_t r, uint8_t g, uint8_t b);
+ws2812b_status_t ws2812b_set_pixel_rgb(ws2812b_t *dev, uint16_t index, uint8_t r, uint8_t g, uint8_t b);
+ws2812b_status_t ws2812b_set_pixel_grb(ws2812b_t *dev, uint16_t index, uint8_t g, uint8_t r, uint8_t b);
+ws2812b_status_t ws2812b_refresh(ws2812b_t *dev);
+ws2812b_status_t ws2812b_clear(ws2812b_t *dev);
 
-/**
- * @brief  直接按数据线顺序写入 GRB（仅改缓冲）。
- */
-esp_err_t ws2812b_set_pixel_grb(ws2812b_t *dev, uint16_t index, uint8_t g, uint8_t r, uint8_t b);
-
-/**
- * @brief  将当前缓冲发送到灯带（阻塞直到本帧发送完成）。
- */
-esp_err_t ws2812b_refresh(ws2812b_t *dev);
-
-/**
- * @brief  将全部像素置零并刷新。
- */
-esp_err_t ws2812b_clear(ws2812b_t *dev);
-
-/**
- * @brief  连续 GRB 缓冲区指针（长度 3 * num_leds），用于批量填充后 ws2812b_refresh。
- */
 uint8_t *ws2812b_get_pixels(ws2812b_t *dev);
-
 uint16_t ws2812b_get_num_leds(const ws2812b_t *dev);
+
+/** Encode one GRB byte → 8 SPI bytes (MSB first). Used by SPI backend and tests. */
+void ws2812b_encode_grb_byte_spi(uint8_t grb_byte, uint8_t *dst8, uint8_t codeword0, uint8_t codeword1);
 
 #ifdef __cplusplus
 }

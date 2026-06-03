@@ -1,257 +1,149 @@
 /**
  * @file    ws2812b.c
- * @brief   WS2812B RMT 驱动实现；编码器时序逻辑参考 ESP-IDF examples/peripherals/rmt/led_strip（Apache-2.0）。
+ * @brief   WS2812B pixel buffer and USER / SPI output backends (no MCU HAL).
  */
 
 #include "ws2812b.h"
 
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "driver/rmt_encoder.h"
-#include "driver/rmt_tx.h"
-#include "esp_check.h"
-#include "esp_log.h"
-
-static const char *TAG = "ws2812b";
-
-/* 与 IDF led_strip 示例中 __containerof 等价，避免依赖具体 libc 宏名 */
-#define WS2812B_CONTAINEROF(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
-
-typedef struct
+void ws2812b_encode_grb_byte_spi(uint8_t grb_byte, uint8_t *dst8, uint8_t codeword0, uint8_t codeword1)
 {
-    rmt_encoder_t        base;
-    rmt_encoder_t       *bytes_encoder;
-    rmt_encoder_t       *copy_encoder;
-    int                  state;
-    rmt_symbol_word_t    reset_code;
-} ws2812b_strip_encoder_t;
-
-RMT_ENCODER_FUNC_ATTR
-static size_t ws2812b_encode_strip(rmt_encoder_t *encoder, rmt_channel_handle_t channel,
-    const void *primary_data, size_t data_size, rmt_encode_state_t *ret_state)
-{
-    ws2812b_strip_encoder_t *led_encoder = WS2812B_CONTAINEROF(encoder, ws2812b_strip_encoder_t, base);
-    rmt_encoder_handle_t      bytes_encoder = led_encoder->bytes_encoder;
-    rmt_encoder_handle_t      copy_encoder  = led_encoder->copy_encoder;
-    rmt_encode_state_t        session_state = RMT_ENCODING_RESET;
-    rmt_encode_state_t        state         = RMT_ENCODING_RESET;
-    size_t                    encoded_symbols = 0;
-
-    switch (led_encoder->state)
-    {
-    case 0:
-        encoded_symbols += bytes_encoder->encode(bytes_encoder, channel, primary_data, data_size, &session_state);
-        if (session_state & RMT_ENCODING_COMPLETE)
-        {
-            led_encoder->state = 1;
-        }
-        if (session_state & RMT_ENCODING_MEM_FULL)
-        {
-            state |= RMT_ENCODING_MEM_FULL;
-            goto out;
-        }
-        /* fall-through */
-    case 1:
-        encoded_symbols += copy_encoder->encode(copy_encoder, channel, &led_encoder->reset_code,
-            sizeof(led_encoder->reset_code), &session_state);
-        if (session_state & RMT_ENCODING_COMPLETE)
-        {
-            led_encoder->state = RMT_ENCODING_RESET;
-            state |= RMT_ENCODING_COMPLETE;
-        }
-        if (session_state & RMT_ENCODING_MEM_FULL)
-        {
-            state |= RMT_ENCODING_MEM_FULL;
-            goto out;
-        }
-        break;
-    default:
-        break;
+    uint8_t i;
+    for (i = 0u; i < 8u; i++) {
+        const uint8_t mask = (uint8_t)(0x80u >> i);
+        dst8[i]            = (grb_byte & mask) ? codeword1 : codeword0;
     }
-out:
-    *ret_state = state;
-    return encoded_symbols;
 }
 
-static esp_err_t ws2812b_del_strip_encoder(rmt_encoder_t *encoder)
+static ws2812b_status_t ws2812b_refresh_spi(ws2812b_t *dev)
 {
-    ws2812b_strip_encoder_t *led_encoder = WS2812B_CONTAINEROF(encoder, ws2812b_strip_encoder_t, base);
-    rmt_del_encoder(led_encoder->bytes_encoder);
-    rmt_del_encoder(led_encoder->copy_encoder);
-    free(led_encoder);
-    return ESP_OK;
-}
+    const size_t grb_len = (size_t)dev->num_leds * 3u;
+    size_t off             = 0u;
+    size_t i;
 
-RMT_ENCODER_FUNC_ATTR
-static esp_err_t ws2812b_reset_strip_encoder(rmt_encoder_t *encoder)
-{
-    ws2812b_strip_encoder_t *led_encoder = WS2812B_CONTAINEROF(encoder, ws2812b_strip_encoder_t, base);
-    rmt_encoder_reset(led_encoder->bytes_encoder);
-    rmt_encoder_reset(led_encoder->copy_encoder);
-    led_encoder->state = RMT_ENCODING_RESET;
-    return ESP_OK;
-}
-
-static esp_err_t ws2812b_new_strip_encoder(uint32_t resolution_hz, rmt_encoder_handle_t *ret_encoder)
-{
-    esp_err_t                 ret         = ESP_OK;
-    ws2812b_strip_encoder_t  *led_encoder = NULL;
-
-    ESP_GOTO_ON_FALSE(ret_encoder != NULL, ESP_ERR_INVALID_ARG, err, TAG, "invalid argument");
-
-    led_encoder = rmt_alloc_encoder_mem(sizeof(ws2812b_strip_encoder_t));
-    ESP_GOTO_ON_FALSE(led_encoder != NULL, ESP_ERR_NO_MEM, err, TAG, "no mem for strip encoder");
-
-    led_encoder->base.encode = ws2812b_encode_strip;
-    led_encoder->base.del    = ws2812b_del_strip_encoder;
-    led_encoder->base.reset  = ws2812b_reset_strip_encoder;
-
-    const double us_per_tick = 1000000.0 / (double)resolution_hz;
-
-    rmt_bytes_encoder_config_t bytes_encoder_config = {
-        .bit0 = {
-            .level0    = 1,
-            .duration0 = (uint32_t)(0.3 / us_per_tick),
-            .level1    = 0,
-            .duration1 = (uint32_t)(0.9 / us_per_tick),
-        },
-        .bit1 = {
-            .level0    = 1,
-            .duration0 = (uint32_t)(0.9 / us_per_tick),
-            .level1    = 0,
-            .duration1 = (uint32_t)(0.3 / us_per_tick),
-        },
-        .flags.msb_first = 1,
-    };
-
-    ESP_GOTO_ON_ERROR(rmt_new_bytes_encoder(&bytes_encoder_config, &led_encoder->bytes_encoder), err, TAG,
-        "create bytes encoder failed");
-
-    rmt_copy_encoder_config_t copy_encoder_config = {};
-    ESP_GOTO_ON_ERROR(rmt_new_copy_encoder(&copy_encoder_config, &led_encoder->copy_encoder), err, TAG,
-        "create copy encoder failed");
-
-    const uint32_t reset_ticks = (uint32_t)((uint64_t)resolution_hz * 50ULL / 1000000ULL / 2ULL);
-    led_encoder->reset_code = (rmt_symbol_word_t){
-        .level0    = 0,
-        .duration0 = reset_ticks,
-        .level1    = 0,
-        .duration1 = reset_ticks,
-    };
-
-    *ret_encoder = &led_encoder->base;
-    return ESP_OK;
-
-err:
-    if (led_encoder != NULL)
-    {
-        if (led_encoder->bytes_encoder != NULL)
-        {
-            rmt_del_encoder(led_encoder->bytes_encoder);
-        }
-        if (led_encoder->copy_encoder != NULL)
-        {
-            rmt_del_encoder(led_encoder->copy_encoder);
-        }
-        free(led_encoder);
+    for (i = 0u; i < grb_len; i++) {
+        ws2812b_encode_grb_byte_spi(dev->pixels[i], dev->spi_buf + off, dev->spi_codeword0, dev->spi_codeword1);
+        off += 8u;
     }
-    return ret;
+
+    return (dev->spi_write(dev->spi_buf, dev->spi_buf_len, dev->ctx) != 0) ? WS2812B_ERROR_IO : WS2812B_OK;
 }
 
-esp_err_t ws2812b_init(ws2812b_t *dev, const ws2812b_config_t *cfg)
+static void ws2812b_free_buffers(ws2812b_t *dev)
 {
-    ESP_RETURN_ON_FALSE(dev != NULL && cfg != NULL, ESP_ERR_INVALID_ARG, TAG, "null cfg");
-    ESP_RETURN_ON_FALSE(cfg->num_leds > 0, ESP_ERR_INVALID_ARG, TAG, "num_leds");
-    ESP_RETURN_ON_FALSE(cfg->gpio_num >= 0, ESP_ERR_INVALID_ARG, TAG, "gpio");
+    if (dev->pixels != NULL) {
+        free(dev->pixels);
+        dev->pixels = NULL;
+    }
+    if (dev->spi_buf != NULL) {
+        free(dev->spi_buf);
+        dev->spi_buf     = NULL;
+        dev->spi_buf_len = 0u;
+    }
+}
 
-    if (dev->initialized)
-    {
+ws2812b_status_t ws2812b_init_with_config(ws2812b_t *dev, const ws2812b_config_t *cfg)
+{
+    if (dev == NULL || cfg == NULL || cfg->num_leds == 0u) {
+        return WS2812B_ERROR_PARAM;
+    }
+
+    if (cfg->bus == WS2812B_BUS_USER) {
+        if (cfg->transmit == NULL) {
+            return WS2812B_ERROR_PARAM;
+        }
+    } else if (cfg->bus == WS2812B_BUS_SPI) {
+        if (cfg->spi_write == NULL) {
+            return WS2812B_ERROR_PARAM;
+        }
+    } else {
+        return WS2812B_ERROR_PARAM;
+    }
+
+    if (dev->initialized) {
         ws2812b_deinit(dev);
     }
 
-    const uint32_t res_hz = (cfg->resolution_hz != 0u) ? cfg->resolution_hz : WS2812B_DEFAULT_RESOLUTION_HZ;
-    const size_t   blk    = (cfg->mem_block_symbols != 0u) ? cfg->mem_block_symbols : 64u;
-    const uint8_t  qdepth = (cfg->trans_queue_depth != 0u) ? cfg->trans_queue_depth : 4u;
+    const size_t grb_len = (size_t)cfg->num_leds * 3u;
+    uint8_t     *pix     = (uint8_t *)malloc(grb_len);
+    if (pix == NULL) {
+        return WS2812B_ERROR_NOMEM;
+    }
+    memset(pix, 0, grb_len);
 
-    rmt_tx_channel_config_t tx_cfg = {
-        .clk_src           = RMT_CLK_SRC_DEFAULT,
-        .gpio_num          = cfg->gpio_num,
-        .mem_block_symbols = blk,
-        .resolution_hz     = res_hz,
-        .trans_queue_depth = qdepth,
+    uint8_t *spi_buf     = NULL;
+    size_t   spi_buf_len = 0u;
+    if (cfg->bus == WS2812B_BUS_SPI) {
+        spi_buf_len = grb_len * 8u;
+        spi_buf     = (uint8_t *)malloc(spi_buf_len);
+        if (spi_buf == NULL) {
+            free(pix);
+            return WS2812B_ERROR_NOMEM;
+        }
+    }
+
+    dev->pixels           = pix;
+    dev->spi_buf          = spi_buf;
+    dev->spi_buf_len      = spi_buf_len;
+    dev->num_leds         = cfg->num_leds;
+    dev->bus              = cfg->bus;
+    dev->transmit         = cfg->transmit;
+    dev->spi_write        = cfg->spi_write;
+    dev->ctx              = cfg->ctx;
+    dev->spi_codeword0    = (cfg->spi_codeword0 != 0u) ? cfg->spi_codeword0 : WS2812B_SPI_CODEWORD0_DEFAULT;
+    dev->spi_codeword1    = (cfg->spi_codeword1 != 0u) ? cfg->spi_codeword1 : WS2812B_SPI_CODEWORD1_DEFAULT;
+    dev->platform         = NULL;
+    dev->platform_deinit  = NULL;
+    dev->initialized      = true;
+    return WS2812B_OK;
+}
+
+ws2812b_status_t ws2812b_init_user(ws2812b_t *dev,
+                                   uint16_t num_leds,
+                                   ws2812b_transmit_t transmit,
+                                   void *ctx)
+{
+    ws2812b_config_t cfg = {
+        .num_leds  = num_leds,
+        .bus       = WS2812B_BUS_USER,
+        .transmit  = transmit,
+        .ctx       = ctx,
     };
+    return ws2812b_init_with_config(dev, &cfg);
+}
 
-    rmt_channel_handle_t chan = NULL;
-    ESP_RETURN_ON_ERROR(rmt_new_tx_channel(&tx_cfg, &chan), TAG, "rmt_new_tx_channel");
-
-    rmt_encoder_handle_t enc = NULL;
-    esp_err_t            er  = ws2812b_new_strip_encoder(res_hz, &enc);
-    if (er != ESP_OK)
-    {
-        rmt_del_channel(chan);
-        return er;
-    }
-
-    const size_t nbuf = (size_t)cfg->num_leds * 3u;
-    uint8_t     *pix  = (uint8_t *)malloc(nbuf);
-    if (pix == NULL)
-    {
-        rmt_del_encoder(enc);
-        rmt_del_channel(chan);
-        return ESP_ERR_NO_MEM;
-    }
-    memset(pix, 0, nbuf);
-
-    esp_err_t en = rmt_enable(chan);
-    if (en != ESP_OK)
-    {
-        free(pix);
-        rmt_del_encoder(enc);
-        rmt_del_channel(chan);
-        return en;
-    }
-
-    dev->chan           = chan;
-    dev->encoder        = enc;
-    dev->pixels         = pix;
-    dev->num_leds       = cfg->num_leds;
-    dev->resolution_hz  = res_hz;
-    dev->initialized    = true;
-
-    return ESP_OK;
+ws2812b_status_t ws2812b_init_spi(ws2812b_t *dev,
+                                  uint16_t num_leds,
+                                  ws2812b_spi_write_t spi_write,
+                                  void *ctx)
+{
+    ws2812b_config_t cfg = {
+        .num_leds  = num_leds,
+        .bus       = WS2812B_BUS_SPI,
+        .spi_write = spi_write,
+        .ctx       = ctx,
+    };
+    return ws2812b_init_with_config(dev, &cfg);
 }
 
 void ws2812b_deinit(ws2812b_t *dev)
 {
-    if (dev == NULL || !dev->initialized)
-    {
+    if (dev == NULL || !dev->initialized) {
         return;
     }
-
-    rmt_channel_handle_t  chan = (rmt_channel_handle_t)dev->chan;
-    rmt_encoder_handle_t  enc  = (rmt_encoder_handle_t)dev->encoder;
-
-    if (chan != NULL)
-    {
-        (void)rmt_disable(chan);
-        (void)rmt_del_channel(chan);
+    if (dev->platform_deinit != NULL && dev->platform != NULL) {
+        dev->platform_deinit(dev->platform);
     }
-    if (enc != NULL)
-    {
-        (void)rmt_del_encoder(enc);
-    }
-    if (dev->pixels != NULL)
-    {
-        free(dev->pixels);
-    }
-
-    dev->chan        = NULL;
-    dev->encoder     = NULL;
-    dev->pixels      = NULL;
-    dev->num_leds    = 0;
-    dev->initialized = false;
+    ws2812b_free_buffers(dev);
+    dev->transmit        = NULL;
+    dev->spi_write       = NULL;
+    dev->ctx             = NULL;
+    dev->num_leds        = 0u;
+    dev->platform        = NULL;
+    dev->platform_deinit = NULL;
+    dev->initialized     = false;
 }
 
 bool ws2812b_is_initialized(const ws2812b_t *dev)
@@ -259,52 +151,51 @@ bool ws2812b_is_initialized(const ws2812b_t *dev)
     return dev != NULL && dev->initialized;
 }
 
-esp_err_t ws2812b_set_pixel_rgb(ws2812b_t *dev, uint16_t index, uint8_t r, uint8_t g, uint8_t b)
+ws2812b_status_t ws2812b_set_pixel_rgb(ws2812b_t *dev, uint16_t index, uint8_t r, uint8_t g, uint8_t b)
 {
     return ws2812b_set_pixel_grb(dev, index, g, r, b);
 }
 
-esp_err_t ws2812b_set_pixel_grb(ws2812b_t *dev, uint16_t index, uint8_t g, uint8_t r, uint8_t b)
+ws2812b_status_t ws2812b_set_pixel_grb(ws2812b_t *dev, uint16_t index, uint8_t g, uint8_t r, uint8_t b)
 {
-    ESP_RETURN_ON_FALSE(dev != NULL && dev->initialized, ESP_ERR_INVALID_STATE, TAG, "not init");
-    ESP_RETURN_ON_FALSE(index < dev->num_leds, ESP_ERR_INVALID_ARG, TAG, "index");
-
+    if (dev == NULL || !dev->initialized) {
+        return WS2812B_ERROR_NOT_INIT;
+    }
+    if (index >= dev->num_leds) {
+        return WS2812B_ERROR_PARAM;
+    }
     uint8_t *p = dev->pixels + (size_t)index * 3u;
-    p[0]        = g;
-    p[1]        = r;
-    p[2]        = b;
-    return ESP_OK;
+    p[0]       = g;
+    p[1]       = r;
+    p[2]       = b;
+    return WS2812B_OK;
 }
 
-esp_err_t ws2812b_refresh(ws2812b_t *dev)
+ws2812b_status_t ws2812b_refresh(ws2812b_t *dev)
 {
-    ESP_RETURN_ON_FALSE(dev != NULL && dev->initialized, ESP_ERR_INVALID_STATE, TAG, "not init");
+    if (dev == NULL || !dev->initialized) {
+        return WS2812B_ERROR_NOT_INIT;
+    }
 
-    rmt_channel_handle_t chan = (rmt_channel_handle_t)dev->chan;
-    rmt_encoder_handle_t enc  = (rmt_encoder_handle_t)dev->encoder;
-
-    rmt_transmit_config_t tx_cfg = {
-        .loop_count = 0,
-    };
-
-    const size_t nbytes = (size_t)dev->num_leds * 3u;
-    ESP_RETURN_ON_ERROR(rmt_transmit(chan, enc, dev->pixels, nbytes, &tx_cfg), TAG, "rmt_transmit");
-    ESP_RETURN_ON_ERROR(rmt_tx_wait_all_done(chan, -1), TAG, "wait done");
-
-    return ESP_OK;
+    const size_t len = (size_t)dev->num_leds * 3u;
+    if (dev->bus == WS2812B_BUS_SPI) {
+        return ws2812b_refresh_spi(dev);
+    }
+    return (dev->transmit(dev->pixels, len, dev->ctx) != 0) ? WS2812B_ERROR_IO : WS2812B_OK;
 }
 
-esp_err_t ws2812b_clear(ws2812b_t *dev)
+ws2812b_status_t ws2812b_clear(ws2812b_t *dev)
 {
-    ESP_RETURN_ON_FALSE(dev != NULL && dev->initialized, ESP_ERR_INVALID_STATE, TAG, "not init");
+    if (dev == NULL || !dev->initialized) {
+        return WS2812B_ERROR_NOT_INIT;
+    }
     memset(dev->pixels, 0, (size_t)dev->num_leds * 3u);
     return ws2812b_refresh(dev);
 }
 
 uint8_t *ws2812b_get_pixels(ws2812b_t *dev)
 {
-    if (dev == NULL || !dev->initialized)
-    {
+    if (dev == NULL || !dev->initialized) {
         return NULL;
     }
     return dev->pixels;
@@ -312,9 +203,8 @@ uint8_t *ws2812b_get_pixels(ws2812b_t *dev)
 
 uint16_t ws2812b_get_num_leds(const ws2812b_t *dev)
 {
-    if (dev == NULL)
-    {
-        return 0;
+    if (dev == NULL) {
+        return 0u;
     }
     return dev->num_leds;
 }
