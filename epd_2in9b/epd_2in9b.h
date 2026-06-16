@@ -65,9 +65,16 @@ typedef struct {
 epd_2in9b_status_t epd_2in9b_register(epd_2in9b_t *dev, const epd_2in9b_config_t *cfg);
 epd_2in9b_status_t epd_2in9b_init(epd_2in9b_t *dev);
 epd_2in9b_status_t epd_2in9b_clear(epd_2in9b_t *dev);
-/** 仅写 RAM 0x24 并全刷（GoodDisplay EPD_WhiteScreen_ALL / _Black）。 */
+/**
+ * 仅写 RAM 0x24 并全刷（GoodDisplay EPD_WhiteScreen_ALL / _Black）。
+ * 红色层保持模组内上次内容；纯黑白测试用此接口。
+ */
 epd_2in9b_status_t epd_2in9b_display_mono(epd_2in9b_t *dev, const uint8_t *bw_plane);
-/** 写 RAM 0x24 + 0x26 并全刷（三色模组）。 */
+/**
+ * 写 RAM 0x24 + 0x26 并全刷（GoodDisplay EPD_SetRAMValue_BaseMap 三色流程）。
+ * @param bw_plane  黑白平面，位 1=白、0=黑；写 0x24 时按 `bw_invert` 取反。
+ * @param red_plane 红色平面，位 1=红、0=非红；写 0x26 时驱动内部取反。
+ */
 epd_2in9b_status_t epd_2in9b_display(epd_2in9b_t *dev, const uint8_t *bw_plane, const uint8_t *red_plane);
 epd_2in9b_status_t epd_2in9b_sleep(epd_2in9b_t *dev);
 epd_2in9b_status_t epd_2in9b_wait_idle(epd_2in9b_t *dev);
