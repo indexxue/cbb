@@ -8,7 +8,7 @@
 #include <stddef.h>
 
 #define EPD_2IN9_LUT_V2_SIZE      159U
-#define EPD_2IN9_BUSY_TIMEOUT_MS  15000U
+#define EPD_2IN9_BUSY_TIMEOUT_MS  45000U
 
 /* V1 LUT（30 字节） */
 static const uint8_t s_lut_v1_full[30] = {
@@ -206,6 +206,13 @@ static void v2_set_cursor(epd_2in9_t *dev, uint16_t x, uint16_t y)
     write_cmd(dev, 0x4F);
     write_data(dev, (uint8_t)(y & 0xFFU));
     write_data(dev, (uint8_t)((y >> 8) & 0xFFU));
+}
+
+/** 每次写 0x24/0x26 前重置窗口与地址计数（连续刷屏必须）。 */
+static void v2_prepare_ram_write(epd_2in9_t *dev)
+{
+    v2_set_windows(dev, 0U, 0U, (uint16_t)(EPD_2IN9_WIDTH - 1U), (uint16_t)(EPD_2IN9_HEIGHT - 1U));
+    v2_set_cursor(dev, 0U, 0U);
 }
 
 static epd_2in9_status_t v2_lut(epd_2in9_t *dev, const uint8_t *lut)
@@ -459,7 +466,7 @@ epd_2in9_status_t epd_2in9_wait_idle(epd_2in9_t *dev)
             return EPD_2IN9_ERROR_BUSY;
         }
     }
-    delay_ms(dev, 10U);
+    delay_ms(dev, 200U);
     return EPD_2IN9_OK;
 }
 
@@ -471,7 +478,9 @@ epd_2in9_status_t epd_2in9_clear(epd_2in9_t *dev)
     }
 
     if (dev->variant == EPD_2IN9_VARIANT_V2) {
+        v2_prepare_ram_write(dev);
         write_frame_fill(dev, 0x24, 0xFF);
+        v2_prepare_ram_write(dev);
         write_frame_fill(dev, 0x26, 0xFF);
         return v2_turn_on_display(dev, 0xC7);
     }
@@ -502,6 +511,7 @@ epd_2in9_status_t epd_2in9_display_stream(epd_2in9_t *dev, epd_2in9_fill_row_t f
 
     if (dev->variant == EPD_2IN9_VARIANT_V2) {
         for (uint8_t ram_cmd = 0x24U; ram_cmd <= 0x26U; ram_cmd += 2U) {
+            v2_prepare_ram_write(dev);
             write_cmd(dev, ram_cmd);
             for (uint16_t y = 0; y < EPD_2IN9_HEIGHT; y++) {
                 fill_row(y, row, ctx);
@@ -533,6 +543,7 @@ epd_2in9_status_t epd_2in9_display(epd_2in9_t *dev, const uint8_t *image)
     }
 
     if (dev->variant == EPD_2IN9_VARIANT_V2) {
+        v2_prepare_ram_write(dev);
         write_frame(dev, 0x24, image);
         return v2_turn_on_display(dev, 0xC7);
     }
@@ -558,7 +569,9 @@ epd_2in9_status_t epd_2in9_display_base(epd_2in9_t *dev, const uint8_t *image)
     }
 
     if (dev->variant == EPD_2IN9_VARIANT_V2) {
+        v2_prepare_ram_write(dev);
         write_frame(dev, 0x24, image);
+        v2_prepare_ram_write(dev);
         write_frame(dev, 0x26, image);
         return v2_turn_on_display(dev, 0xC7);
     }
