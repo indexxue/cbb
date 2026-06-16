@@ -154,6 +154,24 @@ static epd_2in9b_status_t turn_on_display(epd_2in9b_t *dev, uint8_t ctrl)
     return epd_2in9b_wait_idle(dev);
 }
 
+static void write_plane_fill(epd_2in9b_t *dev, uint8_t cmd, uint8_t fill)
+{
+    uint8_t chunk[64];
+    uint32_t remain = EPD_2IN9B_PLANE_SIZE;
+    uint16_t i;
+
+    for (i = 0U; i < (uint16_t)sizeof(chunk); i++) {
+        chunk[i] = fill;
+    }
+
+    write_cmd(dev, cmd);
+    while (remain > 0U) {
+        uint16_t n = (remain > (uint32_t)sizeof(chunk)) ? (uint16_t)sizeof(chunk) : (uint16_t)remain;
+        write_data_buf(dev, chunk, n);
+        remain -= n;
+    }
+}
+
 static void write_plane(epd_2in9b_t *dev, uint8_t cmd, const uint8_t *plane, bool invert)
 {
     uint8_t chunk[64];
@@ -293,7 +311,6 @@ epd_2in9b_status_t epd_2in9b_clear(epd_2in9b_t *dev)
 {
     epd_2in9b_status_t st = check_dev(dev, true);
     uint8_t white[64];
-    uint32_t remain = EPD_2IN9B_PLANE_SIZE;
     uint16_t i;
 
     if (st != EPD_2IN9B_OK) {
@@ -302,29 +319,11 @@ epd_2in9b_status_t epd_2in9b_clear(epd_2in9b_t *dev)
 
     prepare_ram_write(dev);
 
-    for (i = 0; i < (uint16_t)sizeof(white); i++) {
+    for (i = 0U; i < (uint16_t)sizeof(white); i++) {
         white[i] = dev->bw_invert ? 0x00U : 0xFFU;
     }
-
-    write_cmd(dev, 0x24);
-    remain = EPD_2IN9B_PLANE_SIZE;
-    while (remain > 0U) {
-        uint16_t n = (remain > (uint32_t)sizeof(white)) ? (uint16_t)sizeof(white) : (uint16_t)remain;
-        write_data_buf(dev, white, n);
-        remain -= n;
-    }
-
-    for (i = 0; i < (uint16_t)sizeof(white); i++) {
-        white[i] = 0xFFU;
-    }
-
-    write_cmd(dev, 0x26);
-    remain = EPD_2IN9B_PLANE_SIZE;
-    while (remain > 0U) {
-        uint16_t n = (remain > (uint32_t)sizeof(white)) ? (uint16_t)sizeof(white) : (uint16_t)remain;
-        write_data_buf(dev, white, n);
-        remain -= n;
-    }
+    write_plane_fill(dev, 0x24, white[0]);
+    write_plane_fill(dev, 0x26, 0x00U);
 
     return turn_on_display(dev, EPD_2IN9B_UPDATE_FULL);
 }
@@ -342,6 +341,7 @@ epd_2in9b_status_t epd_2in9b_display_mono(epd_2in9b_t *dev, const uint8_t *bw_pl
 
     prepare_ram_write(dev);
     write_plane(dev, 0x24, bw_plane, dev->bw_invert);
+    write_plane_fill(dev, 0x26, 0x00U);
     return turn_on_display(dev, EPD_2IN9B_UPDATE_FULL);
 }
 
@@ -359,7 +359,7 @@ epd_2in9b_status_t epd_2in9b_display(epd_2in9b_t *dev, const uint8_t *bw_plane, 
     prepare_ram_write(dev);
 
     write_plane(dev, 0x24, bw_plane, dev->bw_invert);
-    write_plane(dev, 0x26, red_plane, true);
+    write_plane(dev, 0x26, red_plane, false);
     return turn_on_display(dev, EPD_2IN9B_UPDATE_FULL);
 }
 

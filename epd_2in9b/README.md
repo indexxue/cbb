@@ -15,7 +15,7 @@
 | 全刷更新字节 | `0xC7` | `0xF7` |
 | 帧缓冲 | 1 × 4736 B | 2 × 4736 B（BW + Red） |
 
-注意：本驱动 **不负责** 绘图、字体、UI 或图像格式转换；上层需提供两个 1bpp 平面，各 `EPD_2IN9B_PLANE_SIZE`（4736）字节。
+注意：底层驱动不负责板级 HAL；绘图见 `epd_display`。板级绑定示例见主工程 `Common/Src/epd_display_board.c`。
 
 ## 硬件参数
 
@@ -33,8 +33,10 @@
 
 | 文件 | 说明 |
 |------|------|
-| `epd_2in9b.h` | 类型、宏、API |
-| `epd_2in9b.c` | 初始化、刷屏、睡眠 |
+| `epd_2in9b.h` / `epd_2in9b.c` | 寄存器协议、刷屏、睡眠 |
+| `epd_display.h` / `epd_display.c` | 帧缓冲、绘图、字库、产测 |
+| `epd_display_assets.h` / `epd_display_assets.c` | 内置图标/位图示例资源 |
+| `epd_display_font.h` | ASCII 12/16/24 点阵字库 |
 
 ## API 概览
 
@@ -144,7 +146,28 @@ void epd_show_bwr(const uint8_t *bw_bitmap, const uint8_t *red_bitmap)
 }
 ```
 
-板级自检示例见主工程 `Common/Src/epd_board.c` 中的 `epd_board_run_test()`。
+板级绑定与产测见主工程 `Common/Src/epd_display_board.c`（`epd_display_test_run(epd_display_board())` 等）。
+
+### 内置图形/图标示例
+
+驱动提供可直接调用的资源 ID 与演示接口：
+
+```c
+/* 绘制内置 16×16 心形图标 */
+epd_display_draw_gfx_asset(disp, 4, 20, EPD_GFX_ICON_HEART_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE);
+
+/* 绘制基本图元样例（实心块、线框、斜线） */
+epd_display_draw_shapes_sample(disp, 4, 24, EPD_COLOR_BLACK);
+
+/* 整屏演示画面（图元 + 图标 + 棋盘格 + 红色心形） */
+epd_display_gfx_demo_fill(disp);
+epd_display_refresh(disp);
+
+/* 或一步完成清屏、演示、三色刷新 */
+epd_display_verify_gfx(disp);
+```
+
+内置资源：`EPD_GFX_ICON_HEART_16`、`EPD_GFX_ICON_CHECK_16`、`EPD_GFX_ICON_ARROW_16`、`EPD_GFX_BITMAP_CHECKER_32`。
 
 ## 编入工程
 
