@@ -44,6 +44,8 @@ typedef struct {
     epd_2in9b_config_t epd;
     void (*power_on)(void);
     void (*power_off)(void);
+    /** true：init 后硬件全刷清屏（约 15~20s）；默认 false，仅清 MCU 帧缓冲。 */
+    bool hw_clear_on_init;
 } epd_display_config_t;
 
 typedef struct {

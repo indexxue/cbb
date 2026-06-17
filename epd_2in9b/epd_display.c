@@ -219,12 +219,14 @@ epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_con
         return map_status(st);
     }
 
-    st = epd_2in9b_clear(&disp->epd);
-    if (st != EPD_2IN9B_OK) {
-        if (disp->power_off != NULL) {
-            disp->power_off();
+    if (cfg->hw_clear_on_init) {
+        st = epd_2in9b_clear(&disp->epd);
+        if (st != EPD_2IN9B_OK) {
+            if (disp->power_off != NULL) {
+                disp->power_off();
+            }
+            return map_status(st);
         }
-        return map_status(st);
     }
 
     epd_display_clear_buffer(disp, EPD_COLOR_WHITE);
@@ -295,8 +297,7 @@ epd_display_status_t epd_display_refresh_mono(epd_display_t *disp)
         return EPD_DISPLAY_ERROR_NOT_INIT;
     }
 
-    plane_fill(disp->red, false);
-    return map_status(epd_2in9b_display(&disp->epd, disp->bw, disp->red));
+    return map_status(epd_2in9b_display_mono(&disp->epd, disp->bw));
 }
 
 epd_display_status_t epd_display_refresh(epd_display_t *disp)

@@ -175,6 +175,7 @@ epd_display_verify_gfx(disp);
 2. Include Path 追加 `../cbb/epd_2in9b`。
 3. 在 `Common/` 或 `Core/` 实现 SPI/GPIO 回调，勿在 `cbb` 内引用 `hspi3` / `main.h`。
 4. 全刷阻塞约 4~6 s，请在 FreeRTOS 任务中调用并保证任务栈足够（帧缓冲建议放静态区）。
+5. `epd_display_init()` 默认**不**做硬件清屏（`hw_clear_on_init = false`），上电后只刷一次即可较快出图；需要物理白屏时调用 `epd_display_clear_screen()`。
 
 ## 常见问题
 
