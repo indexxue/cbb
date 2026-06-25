@@ -17,7 +17,7 @@ static uint8_t s_fast_fill_blk[LCD_FAST_FILL_BLK];
 /** `lcd_fill_fast` 行模板，放静态区避免任务栈溢出（STM32 32KB SRAM） */
 static uint8_t s_linebe[LCD_LINEBUF_MAX * 2U];
 
-static void lcd_wr_rgb565(st7789_t *lcd, uint16_t color) {
+void lcd_wr_rgb565(st7789_t *lcd, uint16_t color) {
     (void)st7789_write_pixels(lcd, &color, 1U);
 }
 
