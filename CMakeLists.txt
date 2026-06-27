@@ -16,6 +16,8 @@ idf_component_register(
         "ws2812b/ws2812b.c"
         "ws2812b/ws2812b_esp32.c"
         "xpt2046/xpt2046.c"
+        "es8311/es8311.c"
+        "ov2640/ov2640.c"
     INCLUDE_DIRS
         "ds3231"
         "eeprom"
@@ -28,5 +30,7 @@ idf_component_register(
         "tb6612"
         "ws2812b"
         "xpt2046"
+        "es8311"
+        "ov2640"
     REQUIRES esp_driver_gpio esp_driver_rmt
 )
