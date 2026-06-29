@@ -1,6 +1,6 @@
 /**
  * @file es8311.h
- * @brief ES8311 音频 Codec 驱动骨架（I2C 控制 + I2S 数据，回调注入）。
+ * @brief ES8311 音频 Codec（I2C 控制 + I2S 从模式，回调注入）。
  */
 
 #ifndef ES8311_H
@@ -30,7 +30,7 @@ typedef enum {
     ES8311_ERROR_PARAM,
     ES8311_ERROR_NOT_INIT,
     ES8311_ERROR_I2C,
-    ES8311_ERROR_I2S,
+    ES8311_ERROR_RATE,
 } es8311_status_t;
 
 typedef enum {
@@ -47,8 +47,10 @@ typedef struct {
     es8311_delay_ms_t       delay_ms;
     uint8_t                 i2c_addr7;
     uint32_t                sample_rate_hz;
-    /** I2S 引脚与端口由板级 esp_driver_i2s 配置后传入 port 号。 */
     int                     i2s_port;
+    /** MCLK = sample_rate_hz * mclk_div；0 表示使用 256。 */
+    uint16_t                mclk_div;
+    bool                    use_mclk;
 } es8311_config_t;
 
 typedef struct {
@@ -58,13 +60,17 @@ typedef struct {
     es8311_delay_ms_t       delay_ms;
     uint8_t                 i2c_addr7;
     uint32_t                sample_rate_hz;
+    uint16_t                mclk_div;
+    bool                    use_mclk;
     int                     i2s_port;
     es8311_mode_t           mode;
     bool                    initialized;
+    bool                    running;
 } es8311_t;
 
 es8311_status_t es8311_init_with_config(es8311_t *dev, const es8311_config_t *cfg);
 es8311_status_t es8311_set_mode(es8311_t *dev, es8311_mode_t mode);
+es8311_status_t es8311_set_dac_volume(es8311_t *dev, uint8_t volume_reg);
 es8311_status_t es8311_start(es8311_t *dev);
 es8311_status_t es8311_stop(es8311_t *dev);
 bool es8311_is_initialized(const es8311_t *dev);
