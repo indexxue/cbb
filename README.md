@@ -11,13 +11,15 @@
 | 子目录 | 器件 | 接口 | 说明 |
 |--------|------|------|------|
 | `ds3231` | DS3231 | I2C | 高精度 RTC，BCD 时间寄存器 |
-| `epd_2in9` | 2.9 寸电子墨水屏 | SPI | 128×296，SSD1606 / SSD1680 |
+| `epd_2in9` | 2.9 寸电子墨水屏 | SPI | 128×296，SSD1606 / Waveshare SSD1680 纯黑白 |
+| `epd_2in9b` | 2.9 寸红白黑墨水屏 | SPI | 128×296，GoodDisplay S-GDEY029Z95 / SSD1680 |
 | `eeprom` | 外扩 EEPROM | I2C / SPI | 非易失存储 |
 | `ili9341` | ILI9341 TFT | SPI | 240×320 屏 |
 | `ina226` | INA226 | I2C | 电流/功率监视 |
 | `mcp4651` | MCP4651 | SPI | 数字电位器 |
 | `mpu6050` | MPU6050 | I2C | 六轴 IMU（旧款） |
 | `oled` | SSD1306 等 OLED | I2C / SPI | 单色 OLED |
+| `pn5180` | PN5180 | SPI + GPIO | 多协议 NFC 射频前端（寄存器/EEPROM/RF 场） |
 | `qmc5883p` | QMC5883P | I2C | 三轴磁力计 |
 | `qmi8658a` | QMI8658A | I2C / SPI | 六轴 IMU |
 | `st7789` | ST7789 | SPI | 240×135 TFT |
