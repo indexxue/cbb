@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file ov2640.h
- * @brief OV2640 DVP 摄像头驱动骨架（SCCB + 并行数据，回调/引脚注入）。
+ * @brief OV2640 DVP 摄像头（esp_driver_cam + esp_cam_sensor）。
  */
 
 #ifndef OV2640_H
@@ -57,6 +57,8 @@ typedef struct {
     uint32_t xclk_hz;
 } ov2640_pin_config_t;
 
+typedef void (*ov2640_frame_cb_t)(void *user_ctx, const uint8_t *rgb565, uint16_t width, uint16_t height);
+
 typedef struct {
     ov2640_sccb_write_t      sccb_write;
     ov2640_sccb_read_t       sccb_read;
@@ -69,6 +71,13 @@ typedef struct {
     uint16_t                 frame_width;
     uint16_t                 frame_height;
     ov2640_pixel_format_t    format;
+    /** 可选：BoardInit 已创建的 I2C master 总线（i2c_master_bus_handle_t）。 */
+    void                    *i2c_bus_handle;
+    int8_t                   i2c_port;
+    int8_t                   i2c_sda;
+    int8_t                   i2c_scl;
+    /** esp_cam_sensor 格式名；NULL 时按 RGB565 240x240 默认。 */
+    const char              *sensor_format_name;
 } ov2640_config_t;
 
 typedef struct {
@@ -90,6 +99,7 @@ typedef struct {
 ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cfg);
 ov2640_status_t ov2640_start_stream(ov2640_t *dev);
 ov2640_status_t ov2640_stop_stream(ov2640_t *dev);
+ov2640_status_t ov2640_set_frame_callback(ov2640_t *dev, ov2640_frame_cb_t cb, void *user_ctx);
 ov2640_status_t ov2640_capture_jpeg(ov2640_t *dev, uint8_t *buf, uint32_t buf_cap, uint32_t *out_len);
 bool ov2640_is_initialized(const ov2640_t *dev);
 bool ov2640_pins_valid(const ov2640_pin_config_t *pins);

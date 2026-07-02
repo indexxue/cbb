@@ -32,5 +32,5 @@ idf_component_register(
         "xpt2046"
         "es8311"
         "ov2640"
-    REQUIRES esp_driver_gpio esp_driver_rmt
+    REQUIRES esp_driver_gpio esp_driver_rmt esp_driver_cam esp_driver_i2c esp_cam_sensor
 )
