@@ -14,8 +14,15 @@
 #define QMI8658A_REG_CTRL7    0x08u
 #define QMI8658A_REG_RESET    0x60u
 
-#define QMI8658A_REG_TEMP_L 0x33u
-#define QMI8658A_REG_AX_L   0x35u
+#define QMI8658A_REG_STATUSINT 0x2Du
+#define QMI8658A_REG_STATUS0   0x2Eu
+#define QMI8658A_REG_TEMP_L    0x33u
+#define QMI8658A_REG_AX_L      0x35u
+
+#define QMI8658A_STATUS0_ADA   (1u << 0)
+#define QMI8658A_STATUS0_GDA   (1u << 1)
+#define QMI8658A_DATA_READY_POLL_MS 10u
+#define QMI8658A_DATA_READY_RETRIES   50u
 
 #define QMI8658A_WHO_AM_I_VALUE 0x05u
 
@@ -209,7 +216,7 @@ static qmi8658a_status_t qmi8658a_init_core(qmi8658a_t *dev)
     if (qmi8658a_read_regs(dev, QMI8658A_REG_WHO_AM_I, &id, 1u) != QMI8658A_OK) {
         return qmi8658a_bus_error(dev);
     }
-    if (id != QMI8658A_WHO_AM_I_VALUE) {
+    if (!dev->skip_id_check && (id != QMI8658A_WHO_AM_I_VALUE)) {
         return QMI8658A_ERROR_ID;
     }
 
@@ -224,11 +231,17 @@ static qmi8658a_status_t qmi8658a_init_core(qmi8658a_t *dev)
         dev->delay_ms(50u);
     }
 
+    if (dev->spi_3wire) {
+        if (qmi8658a_write_reg(dev, QMI8658A_REG_CTRL1, qmi8658a_pack_ctrl1(dev)) != QMI8658A_OK) {
+            return qmi8658a_bus_error(dev);
+        }
+    }
+
     id = 0u;
     if (qmi8658a_read_regs(dev, QMI8658A_REG_WHO_AM_I, &id, 1u) != QMI8658A_OK) {
         return qmi8658a_bus_error(dev);
     }
-    if (id != QMI8658A_WHO_AM_I_VALUE) {
+    if (!dev->skip_id_check && (id != QMI8658A_WHO_AM_I_VALUE)) {
         return QMI8658A_ERROR_ID;
     }
 
@@ -269,6 +282,7 @@ qmi8658a_status_t qmi8658a_init_with_config(qmi8658a_t *dev, const qmi8658a_conf
     dev->accel_range   = cfg->accel_range;
     dev->gyro_range    = cfg->gyro_range;
     dev->spi_3wire     = false;
+    dev->skip_id_check = cfg->skip_id_check;
     dev->initialized   = false;
 
     return qmi8658a_init_core(dev);
@@ -309,6 +323,7 @@ qmi8658a_status_t qmi8658a_init_spi_with_config(qmi8658a_t *dev, const qmi8658a_
     dev->accel_range   = cfg->accel_range;
     dev->gyro_range    = cfg->gyro_range;
     dev->spi_3wire     = cfg->spi_3wire;
+    dev->skip_id_check = cfg->skip_id_check;
     dev->initialized   = false;
 
     qmi8658a_cs_set(dev, 1u);
@@ -371,6 +386,21 @@ qmi8658a_status_t qmi8658a_read_raw(qmi8658a_t *dev,
     }
     if (ax == NULL || ay == NULL || az == NULL || gx == NULL || gy == NULL || gz == NULL) {
         return QMI8658A_ERROR_PARAM;
+    }
+
+    uint8_t status0 = 0u;
+    uint32_t retry;
+
+    for (retry = 0u; retry < QMI8658A_DATA_READY_RETRIES; retry++) {
+        if (qmi8658a_read_regs(dev, QMI8658A_REG_STATUS0, &status0, 1u) != QMI8658A_OK) {
+            return qmi8658a_bus_error(dev);
+        }
+        if ((status0 & (QMI8658A_STATUS0_ADA | QMI8658A_STATUS0_GDA)) != 0u) {
+            break;
+        }
+        if (dev->delay_ms != NULL) {
+            dev->delay_ms(QMI8658A_DATA_READY_POLL_MS);
+        }
     }
 
     uint8_t buf[12];

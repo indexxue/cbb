@@ -77,6 +77,8 @@ typedef struct {
     uint8_t                     address;
     qmi8658a_accel_range_t      accel_range;
     qmi8658a_gyro_range_t       gyro_range;
+    /** 厂测：true 时不校验 WHO_AM_I（兼容克隆/非标 ID）。 */
+    bool                        skip_id_check;
 } qmi8658a_config_t;
 
 typedef struct {
@@ -88,6 +90,8 @@ typedef struct {
     qmi8658a_gyro_range_t       gyro_range;
     /** false=4 线 SPI（默认）；true=3 线 SPI（CTRL1.SIM=1）。 */
     bool                        spi_3wire;
+    /** 厂测：true 时不校验 WHO_AM_I（兼容克隆/非标 ID）。 */
+    bool                        skip_id_check;
 } qmi8658a_spi_config_t;
 
 typedef struct {
@@ -103,6 +107,7 @@ typedef struct {
     qmi8658a_accel_range_t        accel_range;
     qmi8658a_gyro_range_t         gyro_range;
     bool                          spi_3wire;
+    bool                          skip_id_check;
     bool                          initialized;
 } qmi8658a_t;
 
