@@ -120,6 +120,37 @@ qmc5883p_status_t qmc5883p_init(qmc5883p_t *dev,
     return qmc5883p_init_with_config(dev, &cfg);
 }
 
+static qmc5883p_status_t qmc5883p_decode_raw(const uint8_t *buf, int16_t *mx, int16_t *my, int16_t *mz)
+{
+    if ((buf == NULL) || (mx == NULL) || (my == NULL) || (mz == NULL)) {
+        return QMC5883P_ERROR_PARAM;
+    }
+
+    *mx = (int16_t)(((uint16_t)buf[1] << 8) | buf[0]);
+    *my = (int16_t)(((uint16_t)buf[3] << 8) | buf[2]);
+    *mz = (int16_t)(((uint16_t)buf[5] << 8) | buf[4]);
+    return QMC5883P_OK;
+}
+
+qmc5883p_status_t qmc5883p_read_raw_nowait(qmc5883p_t *dev, int16_t *mx, int16_t *my, int16_t *mz)
+{
+    uint8_t buf[6];
+
+    if ((dev == NULL) || !dev->initialized) {
+        return QMC5883P_ERROR_NOT_INIT;
+    }
+    if ((mx == NULL) || (my == NULL) || (mz == NULL)) {
+        return QMC5883P_ERROR_PARAM;
+    }
+
+    /* 连续模式下寄存器始终为最近一次转换结果，勿阻塞等待 DRDY */
+    if (qmc5883p_read_regs(dev, QMC5883P_REG_DATA_X_L, buf, sizeof(buf)) != QMC5883P_OK) {
+        return QMC5883P_ERROR_I2C;
+    }
+
+    return qmc5883p_decode_raw(buf, mx, my, mz);
+}
+
 qmc5883p_status_t qmc5883p_read_raw(qmc5883p_t *dev, int16_t *mx, int16_t *my, int16_t *mz)
 {
     uint8_t status = 0u;
@@ -149,8 +180,5 @@ qmc5883p_status_t qmc5883p_read_raw(qmc5883p_t *dev, int16_t *mx, int16_t *my, i
         return QMC5883P_ERROR_I2C;
     }
 
-    *mx = (int16_t)(((uint16_t)buf[1] << 8) | buf[0]);
-    *my = (int16_t)(((uint16_t)buf[3] << 8) | buf[2]);
-    *mz = (int16_t)(((uint16_t)buf[5] << 8) | buf[4]);
-    return QMC5883P_OK;
+    return qmc5883p_decode_raw(buf, mx, my, mz);
 }

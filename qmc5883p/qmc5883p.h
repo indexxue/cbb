@@ -51,6 +51,7 @@ qmc5883p_status_t qmc5883p_init(qmc5883p_t *dev,
                                   qmc5883p_delay_ms_t delay_ms);
 
 qmc5883p_status_t qmc5883p_read_raw(qmc5883p_t *dev, int16_t *mx, int16_t *my, int16_t *mz);
+qmc5883p_status_t qmc5883p_read_raw_nowait(qmc5883p_t *dev, int16_t *mx, int16_t *my, int16_t *mz);
 
 #ifdef __cplusplus
 }

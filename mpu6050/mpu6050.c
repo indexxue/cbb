@@ -7,9 +7,18 @@
 
 #include <stddef.h>
 
+#define MPU6050_REG_SMPLRT_DIV   0x19u
+#define MPU6050_REG_CONFIG       0x1Au
+#define MPU6050_REG_GYRO_CONFIG  0x1Bu
+#define MPU6050_REG_ACCEL_CONFIG 0x1Cu
 #define MPU6050_REG_WHO_AM_I     0x75u
 #define MPU6050_REG_PWR_MGMT_1   0x6Bu
 #define MPU6050_REG_ACCEL_XOUT_H 0x3Bu
+
+/** DLPF_CFG=0：陀螺 260Hz 带宽，响应最快；±250°/s、±2g 与 attitude.c 换算一致 */
+#define MPU6050_DLPF_CFG_FAST    0x00u
+#define MPU6050_GYRO_FS_250DPS   0x00u
+#define MPU6050_ACCEL_FS_2G      0x00u
 
 #define MPU6050_WHO_AM_I_VALUE 0x68u
 
@@ -58,6 +67,19 @@ static mpu6050_status_t mpu6050_init_core(mpu6050_t *dev)
 
     if (dev->delay_ms != NULL) {
         dev->delay_ms(100u);
+    }
+
+    if (mpu6050_write_reg(dev, MPU6050_REG_SMPLRT_DIV, 0x00u) != MPU6050_OK) {
+        return MPU6050_ERROR_I2C;
+    }
+    if (mpu6050_write_reg(dev, MPU6050_REG_CONFIG, MPU6050_DLPF_CFG_FAST) != MPU6050_OK) {
+        return MPU6050_ERROR_I2C;
+    }
+    if (mpu6050_write_reg(dev, MPU6050_REG_GYRO_CONFIG, MPU6050_GYRO_FS_250DPS) != MPU6050_OK) {
+        return MPU6050_ERROR_I2C;
+    }
+    if (mpu6050_write_reg(dev, MPU6050_REG_ACCEL_CONFIG, MPU6050_ACCEL_FS_2G) != MPU6050_OK) {
+        return MPU6050_ERROR_I2C;
     }
 
     dev->initialized = true;
