@@ -24,6 +24,7 @@
 | `qmi8658a` | QMI8658A | I2C / SPI | 六轴 IMU |
 | `st7789` | ST7789 | SPI | 240×135 TFT |
 | `tb6612` | TB6612FNG | GPIO / PWM | 双路电机驱动 |
+| `hc_sr04` | HC-SR04 / HC-SR04P | GPIO | 超声波测距（Trig + Echo） |
 | `ws2812b` | WS2812B | 单线时序 | RGB 灯带（ESP RMT 实现） |
 | `xpt2046` | XPT2046 | SPI | 电阻触摸屏 |
 | `zb25vq16` | ZB25VQ16 | SPI | 外扩 NOR Flash |
