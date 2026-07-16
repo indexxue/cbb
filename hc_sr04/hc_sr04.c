@@ -72,7 +72,9 @@ uint16_t hc_sr04_pulse_us_to_mm(uint32_t pulse_us, uint32_t speed_cm_per_s)
         return 0u;
     }
 
-    mm = ((uint64_t)pulse_us * (uint64_t)speed_cm_per_s) / 20000u;
+    /* pulse_us 是往返时间(µs)，speed_cm_per_s 是声速(cm/s)
+     * 距离(mm) = pulse_us×10⁻⁶ × speed×10 / 2 = pulse_us × speed / 200000 */
+    mm = ((uint64_t)pulse_us * (uint64_t)speed_cm_per_s) / 200000u;
     if (mm > 0xFFFFu) {
         return 0xFFFFu;
     }

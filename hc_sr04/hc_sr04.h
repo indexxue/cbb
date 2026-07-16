@@ -91,7 +91,7 @@ hc_sr04_status_t hc_sr04_measure_cm(hc_sr04_t *dev, uint8_t *distance_cm);
 
 /**
  * @brief Convert echo pulse width (us) to distance (mm).
- *        distance_mm = pulse_us * speed_cm_per_s / 20000
+ *        distance_mm = pulse_us * speed_cm_per_s / 200000
  */
 uint16_t hc_sr04_pulse_us_to_mm(uint32_t pulse_us, uint32_t speed_cm_per_s);
 
