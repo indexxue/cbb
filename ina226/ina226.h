@@ -59,11 +59,22 @@ typedef enum {
 /** Configuration：RST */
 #define INA226_CFG_RST (1u << 15)
 
-/** Configuration：BRNG — 0=16V 总线量程，1=80V */
+/**
+ * 历史字段：INA226 无 BRNG（固定约 36 V 总线量程）。
+ * 保留枚举以免破坏既有配置初始化器；`ina226_pack_config()` 忽略该字段。
+ */
 typedef enum {
     INA226_BUS_RANGE_16V = 0u,
     INA226_BUS_RANGE_80V = 1u
 } ina226_bus_range_t;
+
+/** Manufacturer ID 寄存器（只读，期望 0x5449 = "TI"） */
+#define INA226_REG_MANUFACTURER_ID 0xFEu
+#define INA226_MANUFACTURER_ID_TI  0x5449u
+
+/** Die ID 寄存器（只读，期望 0x2260） */
+#define INA226_REG_DIE_ID 0xFFu
+#define INA226_DIE_ID     0x2260u
 
 /** Configuration：AVG[2:0] */
 typedef enum {
