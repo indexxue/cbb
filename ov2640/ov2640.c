@@ -16,6 +16,18 @@
 static const char *TAG = "ov2640";
 
 #define OV2640_SCCB_FREQ_HZ (100000U)
+/** XCLK 起来后 SCCB 就绪等待；过短时探测偶发超时。 */
+#define OV2640_XCLK_SETTLE_MS (200U)
+/** 等 0x30 ACK 的轮询次数 / 间隔。 */
+#define OV2640_SCCB_PROBE_TRIES (10U)
+#define OV2640_SCCB_PROBE_GAP_MS (50U)
+/** detect / 读 PID 失败后的重试。 */
+#define OV2640_DETECT_TRIES (5U)
+#define OV2640_DETECT_GAP_MS (100U)
+/** 置 1 时在 detect 前做全总线扫描（调试用，会刷大量 timeout 日志）。 */
+#ifndef OV2640_I2C_FULL_SCAN
+#define OV2640_I2C_FULL_SCAN (0)
+#endif
 #define OV2640_DEFAULT_RGB565_FMT "DVP_8bit_20Minput_RGB565_BE_240x240_25fps"
 #define OV2640_DEFAULT_YUV422_FMT "DVP_8bit_20Minput_YUV422_240x240_25fps"
 
@@ -91,6 +103,7 @@ static ov2640_status_t ov2640_init_i2c_bus(const ov2640_config_t *cfg, i2c_maste
     return OV2640_OK;
 }
 
+#if OV2640_I2C_FULL_SCAN
 static void ov2640_i2c_scan_bus(i2c_master_bus_handle_t bus, const char *stage)
 {
     uint16_t found = 0U;
@@ -110,6 +123,30 @@ static void ov2640_i2c_scan_bus(i2c_master_bus_handle_t bus, const char *stage)
     } else {
         ESP_LOGI(TAG, "I2C scan [%s]: total %u device(s)", stage, (unsigned)found);
     }
+}
+#endif
+
+/**
+ * 等 OV2640 SCCB（默认 0x30）给出 ACK。
+ * 比全总线扫描更稳：不把空地址超时打脏总线，并覆盖上电/XCLK 就绪抖动。
+ */
+static bool ov2640_wait_sccb_ack(i2c_master_bus_handle_t bus, uint8_t addr7)
+{
+    for (uint32_t i = 0U; i < OV2640_SCCB_PROBE_TRIES; i++) {
+        if (i2c_master_probe(bus, (uint16_t)addr7, 200) == ESP_OK) {
+            if (i > 0U) {
+                ESP_LOGI(TAG, "SCCB 0x%02X ACK after %u try(s)", (unsigned)addr7, (unsigned)(i + 1U));
+            } else {
+                ESP_LOGI(TAG, "SCCB 0x%02X ACK", (unsigned)addr7);
+            }
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(OV2640_SCCB_PROBE_GAP_MS));
+    }
+    ESP_LOGW(TAG, "SCCB 0x%02X no ACK after %u tries (check SCL/SDA/XCLK/pull-ups)",
+             (unsigned)addr7,
+             (unsigned)OV2640_SCCB_PROBE_TRIES);
+    return false;
 }
 
 static ov2640_status_t ov2640_init_sensor(const ov2640_config_t *cfg,
@@ -298,16 +335,39 @@ ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cf
     }
 
     /* OV2640 SCCB 需 XCLK 输出后才应答；DVP 创建时会启动 XCLK。 */
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(OV2640_XCLK_SETTLE_MS));
 
+#if OV2640_I2C_FULL_SCAN
     ov2640_i2c_scan_bus(s_rt.i2c_bus, "post-XCLK");
+#endif
 
-    if (ov2640_init_sensor(cfg, s_rt.i2c_bus, &s_rt.sensor, &s_rt.sccb) != OV2640_OK) {
-        (void)esp_cam_ctlr_del(s_rt.cam);
-        if (s_rt.i2c_bus_owned) {
-            (void)i2c_del_master_bus(s_rt.i2c_bus);
+    (void)ov2640_wait_sccb_ack(s_rt.i2c_bus, dev->sccb_addr7);
+
+    {
+        ov2640_status_t det = OV2640_ERROR_SCCB;
+        for (uint32_t try = 0U; try < OV2640_DETECT_TRIES; try++) {
+            det = ov2640_init_sensor(cfg, s_rt.i2c_bus, &s_rt.sensor, &s_rt.sccb);
+            if (det == OV2640_OK) {
+                if (try > 0U) {
+                    ESP_LOGI(TAG, "detect OK on try %u/%u",
+                             (unsigned)(try + 1U),
+                             (unsigned)OV2640_DETECT_TRIES);
+                }
+                break;
+            }
+            ESP_LOGW(TAG, "detect try %u/%u failed, retry",
+                     (unsigned)(try + 1U),
+                     (unsigned)OV2640_DETECT_TRIES);
+            (void)ov2640_wait_sccb_ack(s_rt.i2c_bus, dev->sccb_addr7);
+            vTaskDelay(pdMS_TO_TICKS(OV2640_DETECT_GAP_MS));
         }
-        return OV2640_ERROR_SCCB;
+        if (det != OV2640_OK) {
+            (void)esp_cam_ctlr_del(s_rt.cam);
+            if (s_rt.i2c_bus_owned) {
+                (void)i2c_del_master_bus(s_rt.i2c_bus);
+            }
+            return OV2640_ERROR_SCCB;
+        }
     }
 
     frame_bytes = (size_t)cfg->frame_width * (size_t)cfg->frame_height * 2U;
