@@ -15,15 +15,16 @@
 
 static const char *TAG = "ov2640";
 
-#define OV2640_SCCB_FREQ_HZ (100000U)
+#define OV2640_SCCB_FREQ_HZ (50000U)
 /** XCLK 起来后 SCCB 就绪等待；过短时探测偶发超时。 */
 #define OV2640_XCLK_SETTLE_MS (200U)
 /** 等 0x30 ACK 的轮询次数 / 间隔。 */
 #define OV2640_SCCB_PROBE_TRIES (10U)
 #define OV2640_SCCB_PROBE_GAP_MS (50U)
-/** detect / 读 PID 失败后的重试。 */
+/** detect / 读 PID / set_format 失败后的重试。 */
 #define OV2640_DETECT_TRIES (5U)
-#define OV2640_DETECT_GAP_MS (100U)
+/** settings_cif 软复位后若仍 NACK，外层重试需留足恢复时间。 */
+#define OV2640_DETECT_GAP_MS (250U)
 /** 置 1 时在 detect 前做全总线扫描（调试用，会刷大量 timeout 日志）。 */
 #ifndef OV2640_I2C_FULL_SCAN
 #define OV2640_I2C_FULL_SCAN (0)
@@ -38,6 +39,7 @@ typedef struct {
     esp_sccb_io_handle_t     sccb;
     i2c_master_bus_handle_t  i2c_bus;
     bool                     i2c_bus_owned;
+    bool                     ctlr_enabled;
     void                    *frame_buf;
     size_t                   frame_buf_len;
     ov2640_frame_cb_t        frame_cb;
@@ -195,6 +197,8 @@ static ov2640_status_t ov2640_init_sensor(const ov2640_config_t *cfg,
 
     esp_cam_sensor_format_array_t fmt_array = {0};
     if (esp_cam_sensor_query_format(sensor, &fmt_array) != ESP_OK) {
+        (void)esp_cam_sensor_del_dev(sensor);
+        (void)esp_sccb_del_i2c_io(cam_cfg.sccb_handle);
         return OV2640_ERROR_SCCB;
     }
 
@@ -210,11 +214,16 @@ static ov2640_status_t ov2640_init_sensor(const ov2640_config_t *cfg,
         for (int i = 0; i < fmt_array.count; i++) {
             ESP_LOGE(TAG, "  fmt[%d]: %s", i, fmt_array.format_array[i].name);
         }
+        (void)esp_cam_sensor_del_dev(sensor);
+        (void)esp_sccb_del_i2c_io(cam_cfg.sccb_handle);
         return OV2640_ERROR_SCCB;
     }
 
     if (esp_cam_sensor_set_format(sensor, picked) != ESP_OK) {
         ESP_LOGE(TAG, "set format failed");
+        /* 半截写表后必须释放，否则外层重试会再挂一个同地址 SCCB 设备。 */
+        (void)esp_cam_sensor_del_dev(sensor);
+        (void)esp_sccb_del_i2c_io(cam_cfg.sccb_handle);
         return OV2640_ERROR_SCCB;
     }
 
@@ -398,29 +407,14 @@ ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cf
         return OV2640_ERROR_CAPTURE;
     }
 
-    if (esp_cam_ctlr_enable(s_rt.cam) != ESP_OK) {
-        (void)esp_cam_ctlr_del(s_rt.cam);
-        (void)esp_sccb_del_i2c_io(s_rt.sccb);
-        if (s_rt.i2c_bus_owned) {
-            (void)i2c_del_master_bus(s_rt.i2c_bus);
-        }
-        return OV2640_ERROR_CAPTURE;
-    }
-
-#if 0
-    if (cfg->format == OV2640_FMT_YUV422) {
-        const cam_ctlr_format_conv_config_t conv_cfg = {
-            .src_format = CAM_CTLR_COLOR_YUV422,
-            .dst_format = CAM_CTLR_COLOR_RGB565,
-            .conv_std = COLOR_CONV_STD_RGB_YUV_BT601,
-            .data_width = 8,
-            .input_range = COLOR_RANGE_LIMIT,
-            .output_range = COLOR_RANGE_LIMIT,
-        };
-        (void)esp_cam_ctlr_format_conversion(s_rt.cam, &conv_cfg);
-    }
-#endif
-
+    /*
+     * 对齐官方 dvp_spi_lcd：init 只完成 DVP+sensor+回调，不 enable/start。
+     * enable（cam_hal_start_streaming）与 DMA start 必须紧挨着做；
+     * 否则 HAL 在无 DMA 时吃掉 VSYNC EOF，之后可能再也收不到帧。
+     * stop() 会 cam_hal_stop_streaming，而 start() 不会重启 HAL——
+     * 因此 stop 后必须 disable→enable 才能恢复（见 ov2640_start_stream）。
+     */
+    s_rt.ctlr_enabled = false;
     dev->initialized = true;
     ESP_LOGI(TAG, "ready %ux%u", (unsigned)dev->frame_width, (unsigned)dev->frame_height);
     return OV2640_OK;
@@ -448,10 +442,17 @@ ov2640_status_t ov2640_start_stream(ov2640_t *dev)
             return OV2640_ERROR_CAPTURE;
         }
     }
+    if (!s_rt.ctlr_enabled) {
+        if (esp_cam_ctlr_enable(s_rt.cam) != ESP_OK) {
+            return OV2640_ERROR_CAPTURE;
+        }
+        s_rt.ctlr_enabled = true;
+    }
     if (esp_cam_ctlr_start(s_rt.cam) != ESP_OK) {
         return OV2640_ERROR_CAPTURE;
     }
     dev->streaming = true;
+    ESP_LOGI(TAG, "stream started");
     return OV2640_OK;
 }
 
@@ -463,6 +464,10 @@ ov2640_status_t ov2640_stop_stream(ov2640_t *dev)
         return OV2640_ERROR_NOT_INIT;
     }
     (void)esp_cam_ctlr_stop(s_rt.cam);
+    if (s_rt.ctlr_enabled) {
+        (void)esp_cam_ctlr_disable(s_rt.cam);
+        s_rt.ctlr_enabled = false;
+    }
     if (s_rt.sensor != NULL) {
         (void)esp_cam_sensor_ioctl(s_rt.sensor, ESP_CAM_SENSOR_IOC_S_STREAM, &enable);
     }
