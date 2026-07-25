@@ -33,15 +33,18 @@ static ws2812b_status_t ws2812b_refresh_spi(ws2812b_t *dev)
 
 static void ws2812b_free_buffers(ws2812b_t *dev)
 {
-    if (dev->pixels != NULL) {
+    if ((dev->pixels != NULL) && dev->pixels_owned) {
         free(dev->pixels);
-        dev->pixels = NULL;
     }
-    if (dev->spi_buf != NULL) {
+    dev->pixels = NULL;
+    dev->pixels_owned = false;
+
+    if ((dev->spi_buf != NULL) && dev->spi_buf_owned) {
         free(dev->spi_buf);
-        dev->spi_buf     = NULL;
-        dev->spi_buf_len = 0u;
     }
+    dev->spi_buf = NULL;
+    dev->spi_buf_len = 0u;
+    dev->spi_buf_owned = false;
 }
 
 ws2812b_status_t ws2812b_init_with_config(ws2812b_t *dev, const ws2812b_config_t *cfg)
@@ -85,8 +88,10 @@ ws2812b_status_t ws2812b_init_with_config(ws2812b_t *dev, const ws2812b_config_t
     }
 
     dev->pixels           = pix;
+    dev->pixels_owned     = true;
     dev->spi_buf          = spi_buf;
     dev->spi_buf_len      = spi_buf_len;
+    dev->spi_buf_owned    = (spi_buf != NULL);
     dev->num_leds         = cfg->num_leds;
     dev->bus              = cfg->bus;
     dev->transmit         = cfg->transmit;
@@ -112,6 +117,38 @@ ws2812b_status_t ws2812b_init_user(ws2812b_t *dev,
         .ctx       = ctx,
     };
     return ws2812b_init_with_config(dev, &cfg);
+}
+
+ws2812b_status_t ws2812b_init_user_buf(ws2812b_t *dev,
+                                       uint16_t num_leds,
+                                       uint8_t *pixel_buf,
+                                       size_t pixel_buf_len,
+                                       ws2812b_transmit_t transmit,
+                                       void *ctx)
+{
+    const size_t need = (size_t)num_leds * 3u;
+
+    if ((dev == NULL) || (num_leds == 0u) || (transmit == NULL) ||
+        (pixel_buf == NULL) || (pixel_buf_len < need)) {
+        return WS2812B_ERROR_PARAM;
+    }
+
+    if (dev->initialized) {
+        ws2812b_deinit(dev);
+    }
+
+    memset(pixel_buf, 0, need);
+    memset(dev, 0, sizeof(*dev));
+    dev->pixels          = pixel_buf;
+    dev->pixels_owned    = false;
+    dev->num_leds        = num_leds;
+    dev->bus             = WS2812B_BUS_USER;
+    dev->transmit        = transmit;
+    dev->ctx             = ctx;
+    dev->spi_codeword0   = WS2812B_SPI_CODEWORD0_DEFAULT;
+    dev->spi_codeword1   = WS2812B_SPI_CODEWORD1_DEFAULT;
+    dev->initialized     = true;
+    return WS2812B_OK;
 }
 
 ws2812b_status_t ws2812b_init_spi(ws2812b_t *dev,

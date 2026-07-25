@@ -76,15 +76,28 @@ typedef struct {
     void                     *platform;
     ws2812b_platform_deinit_t platform_deinit;
     bool                      initialized;
+    bool                      pixels_owned; /**< true: deinit 时 free(pixels) */
+    bool                      spi_buf_owned;
 } ws2812b_t;
 
 ws2812b_status_t ws2812b_init_with_config(ws2812b_t *dev, const ws2812b_config_t *cfg);
 
 /** USER backend: only `transmit` required. */
 ws2812b_status_t ws2812b_init_user(ws2812b_t *dev,
-                                 uint16_t num_leds,
-                                 ws2812b_transmit_t transmit,
-                                 void *ctx);
+                                   uint16_t num_leds,
+                                   ws2812b_transmit_t transmit,
+                                   void *ctx);
+
+/**
+ * USER backend with caller-owned pixel buffer (no malloc).
+ * @param pixel_buf 至少 num_leds*3 字节，生命周期须覆盖整个使用期
+ */
+ws2812b_status_t ws2812b_init_user_buf(ws2812b_t *dev,
+                                       uint16_t num_leds,
+                                       uint8_t *pixel_buf,
+                                       size_t pixel_buf_len,
+                                       ws2812b_transmit_t transmit,
+                                       void *ctx);
 
 /** SPI backend: 8 SPI bytes per GRB byte; set SPI clock per README. */
 ws2812b_status_t ws2812b_init_spi(ws2812b_t *dev,
