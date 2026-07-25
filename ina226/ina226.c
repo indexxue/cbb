@@ -7,7 +7,6 @@
 
 #include <stddef.h>
 
-#define INA226_CFG_BRNG_SHIFT 13u
 #define INA226_CFG_AVG_SHIFT  9u
 #define INA226_CFG_VBUS_SHIFT 6u
 #define INA226_CFG_VSH_SHIFT  3u
@@ -36,8 +35,9 @@ uint16_t ina226_pack_config(const ina226_measure_cfg_t *cfg)
         return 0u;
     }
 
-    uint16_t value = 0u;
-    value |= (uint16_t)((uint16_t)(cfg->bus_range & 1u) << INA226_CFG_BRNG_SHIFT);
+    /* SBOS547: bits 14–12 reserved, must be 010. bus_range is unused (no BRNG). */
+    (void)cfg->bus_range;
+    uint16_t value = (uint16_t)(1u << 14);
     value |= (uint16_t)((uint16_t)(cfg->avg & 7u) << INA226_CFG_AVG_SHIFT);
     value |= (uint16_t)((uint16_t)(cfg->vbus_ct & 7u) << INA226_CFG_VBUS_SHIFT);
     value |= (uint16_t)((uint16_t)(cfg->vshunt_ct & 7u) << INA226_CFG_VSH_SHIFT);
@@ -300,7 +300,8 @@ ina226_status_t ina226_read_bus_v(ina226_t *dev, float *v)
     {
         return st;
     }
-    *v = (float)(raw >> 3) * 1.25e-3f;
+    /* INA226 Bus Voltage LSB = 1.25 mV (full 16-bit; unlike INA219 no >>3) */
+    *v = (float)raw * 1.25e-3f;
     return INA226_OK;
 }
 
