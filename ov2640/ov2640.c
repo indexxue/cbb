@@ -40,11 +40,12 @@ typedef struct {
     i2c_master_bus_handle_t  i2c_bus;
     bool                     i2c_bus_owned;
     bool                     ctlr_enabled;
-    void                    *frame_buf;
+    void                    *frame_buf[2];
     size_t                   frame_buf_len;
+    uint8_t                  next_buf_idx;
     ov2640_frame_cb_t        frame_cb;
     void                    *frame_user;
-    esp_cam_ctlr_trans_t     trans;
+    esp_cam_ctlr_trans_t     trans[2];
 } ov2640_runtime_t;
 
 static ov2640_runtime_t s_rt = {0};
@@ -236,8 +237,12 @@ static ov2640_status_t ov2640_init_sensor(const ov2640_config_t *cfg,
 static bool ov2640_on_get_new_trans(esp_cam_ctlr_handle_t handle, esp_cam_ctlr_trans_t *trans, void *user_data)
 {
     ov2640_runtime_t *rt = (ov2640_runtime_t *)user_data;
+    uint8_t idx;
+
     (void)handle;
-    *trans = rt->trans;
+    idx = rt->next_buf_idx & 1U;
+    *trans = rt->trans[idx];
+    rt->next_buf_idx = (uint8_t)(idx ^ 1U);
     return false;
 }
 
@@ -331,6 +336,7 @@ ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cf
     dvp_cfg.v_res = cfg->frame_height;
     dvp_cfg.input_data_color_type = (cfg->format == OV2640_FMT_YUV422) ? CAM_CTLR_COLOR_YUV422 : CAM_CTLR_COLOR_RGB565;
     dvp_cfg.dma_burst_size = 64;
+    /* 应用层双缓冲 ping-pong，关闭驱动内部 backup，省一帧 PSRAM。 */
     dvp_cfg.bk_buffer_dis = 1;
     dvp_cfg.pin = &pin_cfg;
     dvp_cfg.xclk_freq = (cfg->pins.xclk_hz != 0U) ? cfg->pins.xclk_hz : 20000000U;
@@ -380,9 +386,10 @@ ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cf
     }
 
     frame_bytes = (size_t)cfg->frame_width * (size_t)cfg->frame_height * 2U;
-    s_rt.frame_buf = esp_cam_ctlr_alloc_buffer(s_rt.cam, frame_bytes, buf_caps);
-    if (s_rt.frame_buf == NULL) {
-        ESP_LOGE(TAG, "frame buffer alloc %u failed", (unsigned)frame_bytes);
+    s_rt.frame_buf[0] = esp_cam_ctlr_alloc_buffer(s_rt.cam, frame_bytes, buf_caps);
+    s_rt.frame_buf[1] = esp_cam_ctlr_alloc_buffer(s_rt.cam, frame_bytes, buf_caps);
+    if ((s_rt.frame_buf[0] == NULL) || (s_rt.frame_buf[1] == NULL)) {
+        ESP_LOGE(TAG, "frame buffer alloc %u x2 failed", (unsigned)frame_bytes);
         (void)esp_cam_ctlr_del(s_rt.cam);
         (void)esp_sccb_del_i2c_io(s_rt.sccb);
         if (s_rt.i2c_bus_owned) {
@@ -392,8 +399,11 @@ ov2640_status_t ov2640_init_with_config(ov2640_t *dev, const ov2640_config_t *cf
     }
 
     s_rt.frame_buf_len = frame_bytes;
-    s_rt.trans.buffer = s_rt.frame_buf;
-    s_rt.trans.buflen = frame_bytes;
+    s_rt.next_buf_idx = 0U;
+    s_rt.trans[0].buffer = s_rt.frame_buf[0];
+    s_rt.trans[0].buflen = frame_bytes;
+    s_rt.trans[1].buffer = s_rt.frame_buf[1];
+    s_rt.trans[1].buflen = frame_bytes;
     s_rt.dev = dev;
 
     cbs.on_get_new_trans = ov2640_on_get_new_trans;
