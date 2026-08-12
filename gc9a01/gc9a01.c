@@ -113,7 +113,8 @@ static uint8_t madctl_for_rotation(uint8_t rot)
         return (uint8_t)(MADCTL_MY | MADCTL_MV | MADCTL_BGR);
     case GC9A01_ROT_0:
     default:
-        return MADCTL_BGR;
+        /* 多数 1.28" 圆屏模组需 MX，否则文字左右镜像 */
+        return (uint8_t)(MADCTL_MX | MADCTL_BGR);
     }
 }
 

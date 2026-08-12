@@ -19,6 +19,7 @@ idf_component_register(
         "ws2812b/ws2812b.c"
         "ws2812b/ws2812b_esp32.c"
         "xpt2046/xpt2046.c"
+        "it7259/it7259.c"
         "es8311/es8311.c"
         "ov2640/ov2640.c"
     INCLUDE_DIRS
@@ -36,6 +37,7 @@ idf_component_register(
         "hc_sr04"
         "ws2812b"
         "xpt2046"
+        "it7259"
         "es8311"
         "ov2640"
     REQUIRES esp_driver_gpio esp_driver_rmt esp_driver_cam esp_driver_i2c esp_cam_sensor

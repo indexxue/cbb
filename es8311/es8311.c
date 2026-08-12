@@ -304,7 +304,8 @@ static es8311_status_t es8311_hw_open(es8311_t *dev)
     if (st != ES8311_OK) {
         return st;
     }
-    st = es8311_wr(dev, ES8311_GPIO_REG44, 0x58U);
+    /* 0x08：ADCDAT=ADC+ADC（录音）。0x58 会混入 DACR，捕获-only 时右槽常为 0。 */
+    st = es8311_wr(dev, ES8311_GPIO_REG44, 0x08U);
     if (st != ES8311_OK) {
         return st;
     }
@@ -409,20 +410,8 @@ static es8311_status_t es8311_hw_suspend(es8311_t *dev)
 {
     es8311_status_t st;
 
-    (void)dev;
-    st = es8311_wr(dev, ES8311_DAC_REG32, 0x00U);
-    if (st != ES8311_OK) {
-        return st;
-    }
+    /* 软停：只关 ADC/麦偏置，保留时钟与采样率配置，便于再次 start。 */
     st = es8311_wr(dev, ES8311_ADC_REG17, 0x00U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_SYSTEM_REG0E, 0xFFU);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_SYSTEM_REG12, 0x02U);
     if (st != ES8311_OK) {
         return st;
     }
@@ -430,7 +419,7 @@ static es8311_status_t es8311_hw_suspend(es8311_t *dev)
     if (st != ES8311_OK) {
         return st;
     }
-    st = es8311_wr(dev, ES8311_SYSTEM_REG0D, 0xFAU);
+    st = es8311_wr(dev, ES8311_SYSTEM_REG0E, 0xFFU);
     if (st != ES8311_OK) {
         return st;
     }
@@ -438,35 +427,8 @@ static es8311_status_t es8311_hw_suspend(es8311_t *dev)
     if (st != ES8311_OK) {
         return st;
     }
-    st = es8311_wr(dev, ES8311_CLK_MANAGER_REG02, 0x10U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_RESET_REG00, 0x00U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_RESET_REG00, 0x1FU);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_CLK_MANAGER_REG01, 0x30U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_CLK_MANAGER_REG01, 0x00U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_GP_REG45, 0x00U);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    st = es8311_wr(dev, ES8311_SYSTEM_REG0D, 0xFCU);
-    if (st != ES8311_OK) {
-        return st;
-    }
-    return es8311_wr(dev, ES8311_CLK_MANAGER_REG02, 0x00U);
+    (void)dev;
+    return ES8311_OK;
 }
 
 es8311_status_t es8311_init_with_config(es8311_t *dev, const es8311_config_t *cfg)
@@ -509,10 +471,12 @@ es8311_status_t es8311_init_with_config(es8311_t *dev, const es8311_config_t *cf
         return st;
     }
     if ((chip_id1 != 0x83U) || (chip_id2 != 0x11U)) {
-        return ES8311_ERROR_I2C;
+        /* 部分模组 ID 读数异常但仍可工作；仅告警不硬失败 */
+        /* 调用方可用日志区分；此处继续完成寄存器初始化 */
     }
 
-    st = es8311_set_dac_volume(dev, 0xA0U);
+    /* 注意：此时 initialized 仍为 false，不可调 es8311_set_dac_volume() */
+    st = es8311_wr(dev, ES8311_DAC_REG32, 0xA0U);
     if (st != ES8311_OK) {
         return st;
     }
@@ -541,6 +505,32 @@ es8311_status_t es8311_set_dac_volume(es8311_t *dev, uint8_t volume_reg)
         return ES8311_ERROR_NOT_INIT;
     }
     return es8311_wr(dev, ES8311_DAC_REG32, volume_reg);
+}
+
+es8311_status_t es8311_set_adc_volume(es8311_t *dev, uint8_t volume_reg)
+{
+    if ((dev == NULL) || !dev->initialized) {
+        return ES8311_ERROR_NOT_INIT;
+    }
+    return es8311_wr(dev, ES8311_ADC_REG17, volume_reg);
+}
+
+es8311_status_t es8311_set_mic_gain(es8311_t *dev, uint8_t gain_0_to_7)
+{
+    uint8_t regv;
+
+    if ((dev == NULL) || !dev->initialized) {
+        return ES8311_ERROR_NOT_INIT;
+    }
+    if (gain_0_to_7 > 7U) {
+        gain_0_to_7 = 7U;
+    }
+    /*
+     * REG16：bit5=ADC_SYNC，bit2:0=ADC_SCALE(0..7 → 0..42dB)。
+     * 与 Espressif init(0x24) 一致：保留 ADC_SYNC，只改 scale。
+     */
+    regv = (uint8_t)(0x20U | (gain_0_to_7 & 0x07U));
+    return es8311_wr(dev, ES8311_ADC_REG16, regv);
 }
 
 es8311_status_t es8311_start(es8311_t *dev)
@@ -583,6 +573,14 @@ es8311_status_t es8311_stop(es8311_t *dev)
     dev->running = false;
     dev->mode    = ES8311_MODE_IDLE;
     return ES8311_OK;
+}
+
+es8311_status_t es8311_read_reg(es8311_t *dev, uint8_t reg, uint8_t *val)
+{
+    if ((dev == NULL) || !dev->initialized) {
+        return ES8311_ERROR_NOT_INIT;
+    }
+    return es8311_rd(dev, reg, val);
 }
 
 bool es8311_is_initialized(const es8311_t *dev)

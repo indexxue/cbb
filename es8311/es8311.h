@@ -71,8 +71,15 @@ typedef struct {
 es8311_status_t es8311_init_with_config(es8311_t *dev, const es8311_config_t *cfg);
 es8311_status_t es8311_set_mode(es8311_t *dev, es8311_mode_t mode);
 es8311_status_t es8311_set_dac_volume(es8311_t *dev, uint8_t volume_reg);
+/** ADC 数字音量：0x00≈-95.5dB … 0xBF≈0dB … 0xFF≈+32dB（0.5dB/step）。 */
+es8311_status_t es8311_set_adc_volume(es8311_t *dev, uint8_t volume_reg);
+/**
+ * MIC PGA：0=0dB … 7=42dB（步进 6dB）。写入 REG16 低 3 位。
+ */
+es8311_status_t es8311_set_mic_gain(es8311_t *dev, uint8_t gain_0_to_7);
 es8311_status_t es8311_start(es8311_t *dev);
 es8311_status_t es8311_stop(es8311_t *dev);
+es8311_status_t es8311_read_reg(es8311_t *dev, uint8_t reg, uint8_t *val);
 bool es8311_is_initialized(const es8311_t *dev);
 
 #ifdef __cplusplus
