@@ -47,6 +47,11 @@ typedef struct {
     st7789_delay_ms_t delay_ms;
     /** 未设置或 >3 时按 `ST7789_ROT_LANDSCAPE` 处理。 */
     uint8_t rotation;
+    /**
+     * 色序：非 0 = BGR（历史默认，MADCTL bit3）；0 = RGB。
+     * 多数 1.14" ST7789 模组为 BGR；红蓝反了就改 0。
+     */
+    uint8_t bgr;
 } st7789_config_t;
 
 typedef struct {

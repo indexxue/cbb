@@ -106,21 +106,48 @@ void OLED_DisPlay_Off(void)
     OLED_WR_Byte(0xAE, OLED_CMD);  // 关闭屏幕
 }
 
-// 更新显存到OLED
+// 更新显存到OLED（每页一次 burst；page_buf 用 static，避免撑爆 app_evt 栈）
 void OLED_Refresh(void)
+{
+    static uint8_t page_buf[129];
+    uint8_t page_count = (oled_cfg.height == 0u) ? 8u : (oled_cfg.height / 8u);
+    uint8_t width      = (oled_cfg.width  == 0u) ? 128u : oled_cfg.width;
+    uint8_t i;
+    uint8_t n;
+
+    if (oled_cfg.write_func == NULL)
+    {
+        return;
+    }
+
+    for (i = 0u; i < page_count; i++)
+    {
+        OLED_WR_Byte((uint8_t)(0xB0u + i), OLED_CMD);  /* 页地址 */
+        OLED_WR_Byte(0x00u, OLED_CMD);                  /* 低列 */
+        OLED_WR_Byte(0x10u, OLED_CMD);                  /* 高列 */
+
+        page_buf[0] = 0x40u; /* 数据模式 */
+        for (n = 0u; n < width; n++)
+        {
+            page_buf[1u + n] = OLED_GRAM[n][i];
+        }
+
+        (void)oled_cfg.write_func(oled_cfg.address, page_buf, (uint16_t)(1u + width));
+    }
+}
+
+void OLED_ClearGram(void)
 {
     uint8_t page_count = (oled_cfg.height == 0u) ? 8u : (oled_cfg.height / 8u);
     uint8_t width      = (oled_cfg.width  == 0u) ? 128u : oled_cfg.width;
+    uint8_t i;
+    uint8_t n;
 
-    for (uint8_t i = 0u; i < page_count; i++)
+    for (i = 0u; i < page_count; i++)
     {
-        OLED_WR_Byte(0xB0 + i, OLED_CMD);  // 设置行起始地址
-        OLED_WR_Byte(0x00, OLED_CMD);      // 设置低列起始地址
-        OLED_WR_Byte(0x10, OLED_CMD);      // 设置高列起始地址
-        
-        for (uint8_t n = 0u; n < width; n++)
+        for (n = 0u; n < width; n++)
         {
-            OLED_WR_Byte(OLED_GRAM[n][i], OLED_DATA);
+            OLED_GRAM[n][i] = 0u;
         }
     }
 }
@@ -128,17 +155,8 @@ void OLED_Refresh(void)
 // 清屏函数
 void OLED_Clear(void)
 {
-    uint8_t page_count = (oled_cfg.height == 0u) ? 8u : (oled_cfg.height / 8u);
-    uint8_t width      = (oled_cfg.width  == 0u) ? 128u : oled_cfg.width;
-
-    for (uint8_t i = 0u; i < page_count; i++)
-    {
-        for (uint8_t n = 0u; n < width; n++)
-        {
-            OLED_GRAM[n][i] = 0u;
-        }
-    }
-    OLED_Refresh();  // 更新显示
+    OLED_ClearGram();
+    OLED_Refresh();
 }
 
 // 画点

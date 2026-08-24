@@ -24,6 +24,8 @@ int OLED_Register(oled_i2c_write_func_t write_func,
                   uint8_t width,
                   uint8_t height);
 void OLED_Init(void);
+/** 仅清 GRAM，不写总线（避免软 I2C 双倍刷新） */
+void OLED_ClearGram(void);
 void OLED_Clear(void);
 void OLED_ShowChar(uint8_t x, uint8_t y, uint8_t chr, uint8_t size1);
 void OLED_ShowString(uint8_t x, uint8_t y, uint8_t *chr, uint8_t size1);

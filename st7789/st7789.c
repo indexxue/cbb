@@ -178,7 +178,13 @@ st7789_status_t st7789_register(st7789_t *dev, const st7789_config_t *cfg) {
     delay_ms(dev, 120);
 
     write_cmd(dev, ST7789_CMD_MADCTL);
-    write_data(dev, (uint8_t)(madctl_for_rotation(dev->rotation) | MADCTL_BGR));
+    {
+        uint8_t madctl = madctl_for_rotation(dev->rotation);
+        if (cfg->bgr != 0U) {
+            madctl = (uint8_t)(madctl | MADCTL_BGR);
+        }
+        write_data(dev, madctl);
+    }
 
     write_cmd(dev, ST7789_CMD_COLMOD);
     write_data(dev, 0x05U);
