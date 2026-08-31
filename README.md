@@ -11,8 +11,7 @@
 | 子目录 | 器件 | 接口 | 说明 |
 |--------|------|------|------|
 | `ds3231` | DS3231 | I2C | 高精度 RTC，BCD 时间寄存器 |
-| `epd_2in9` | 2.9 寸电子墨水屏 | SPI | 128×296，SSD1606 / Waveshare SSD1680 纯黑白 |
-| `epd_2in9b` | 2.9 寸红白黑墨水屏 | SPI | 128×296，GoodDisplay S-GDEY029Z95 / SSD1680 |
+| `epd` | 多尺寸墨水屏（panel profile） | SPI | SSD16xx：2.9 BWR/BW、1.54 V2、2.13 V3 |
 | `eeprom` | 外扩 EEPROM | I2C / SPI | 非易失存储 |
 | `ili9341` | ILI9341 TFT | SPI | 240×320 屏 |
 | `ina226` | INA226 | I2C | 电流/功率监视 |

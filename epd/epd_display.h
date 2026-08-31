@@ -1,14 +1,15 @@
 /**
  * @file    epd_display.h
- * @brief   2.9 寸红白黑墨水屏绘图与字库（基于 epd_2in9b，MCU 无关）。
+ * @brief   墨水屏绘图层（panel profile + 板级帧缓冲，MCU 无关）。
  *
- * 逻辑坐标：宽 128（x/列）、高 296（y/行），原点左上角。
+ * 逻辑坐标：原点左上角；宽高取自当前 panel。
  */
 
 #ifndef EPD_DISPLAY_H
 #define EPD_DISPLAY_H
 
-#include "epd_2in9b.h"
+#include "epd.h"
+#include "epd_panel.h"
 #include "epd_display_assets.h"
 
 #include <stdbool.h>
@@ -18,14 +19,12 @@
 extern "C" {
 #endif
 
-#define EPD_DISPLAY_WIDTH   EPD_2IN9B_WIDTH
-#define EPD_DISPLAY_HEIGHT  EPD_2IN9B_HEIGHT
-
 typedef enum {
     EPD_DISPLAY_OK = 0,
     EPD_DISPLAY_ERROR_PARAM,
     EPD_DISPLAY_ERROR_NOT_INIT,
     EPD_DISPLAY_ERROR_BUSY,
+    EPD_DISPLAY_ERROR_UNSUPPORTED,
 } epd_display_status_t;
 
 typedef enum {
@@ -41,26 +40,35 @@ typedef enum {
 } epd_font_size_t;
 
 typedef struct {
-    epd_2in9b_config_t epd;
+    epd_config_t epd;
+    uint8_t *bw;
+    uint8_t *red;              /**< BW panel 可 NULL。 */
+    uint32_t plane_capacity;   /**< 必须 >= epd_panel_plane_size(panel)。 */
     void (*power_on)(void);
     void (*power_off)(void);
-    /** true：init 后硬件全刷清屏（约 15~20s）；默认 false，仅清 MCU 帧缓冲。 */
+    /** true：init 后硬件全刷清屏；默认 false，仅清 MCU 帧缓冲。 */
     bool hw_clear_on_init;
 } epd_display_config_t;
 
 typedef struct {
-    epd_2in9b_t epd;
-    uint8_t bw[EPD_2IN9B_PLANE_SIZE];
-    uint8_t red[EPD_2IN9B_PLANE_SIZE];
+    epd_t epd;
+    uint8_t *bw;
+    uint8_t *red;
+    uint32_t plane_capacity;
     bool ready;
     void (*power_on)(void);
     void (*power_off)(void);
-    epd_2in9b_delay_ms_t delay_ms;
+    epd_delay_ms_t delay_ms;
 } epd_display_t;
 
 epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_config_t *cfg);
 epd_display_status_t epd_display_deinit(epd_display_t *disp, bool sleep);
 bool epd_display_is_ready(const epd_display_t *disp);
+
+uint16_t epd_display_width(const epd_display_t *disp);
+uint16_t epd_display_height(const epd_display_t *disp);
+uint16_t epd_display_bytes_per_row(const epd_display_t *disp);
+uint32_t epd_display_plane_size(const epd_display_t *disp);
 
 void epd_display_clear_buffer(epd_display_t *disp, epd_color_t color);
 epd_display_status_t epd_display_clear_screen(epd_display_t *disp);
@@ -97,7 +105,6 @@ void epd_display_draw_num(epd_display_t *disp, uint16_t x, uint16_t y, uint32_t 
 
 const uint8_t *epd_display_bw_plane(const epd_display_t *disp);
 const uint8_t *epd_display_red_plane(const epd_display_t *disp);
-uint16_t epd_display_plane_size(void);
 
 epd_display_status_t epd_display_test_solid(epd_display_t *disp, epd_color_t color);
 void epd_display_test_pattern_fill(epd_display_t *disp);

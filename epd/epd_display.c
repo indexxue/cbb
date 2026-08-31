@@ -1,6 +1,6 @@
 /**
  * @file    epd_display.c
- * @brief   2.9 寸红白黑墨水屏绘图层（GDEY029Z95 / SSD1680）。
+ * @brief   墨水屏绘图层（运行时宽高，板级帧缓冲）。
  */
 
 #include "epd_display.h"
@@ -10,47 +10,85 @@
 #include <stdio.h>
 #include <string.h>
 
-static epd_display_status_t map_status(epd_2in9b_status_t st)
+static epd_display_status_t map_status(epd_status_t st)
 {
     switch (st) {
-    case EPD_2IN9B_OK:
+    case EPD_OK:
         return EPD_DISPLAY_OK;
-    case EPD_2IN9B_ERROR_PARAM:
+    case EPD_ERROR_PARAM:
         return EPD_DISPLAY_ERROR_PARAM;
-    case EPD_2IN9B_ERROR_NOT_INIT:
+    case EPD_ERROR_NOT_INIT:
         return EPD_DISPLAY_ERROR_NOT_INIT;
-    case EPD_2IN9B_ERROR_BUSY:
+    case EPD_ERROR_BUSY:
         return EPD_DISPLAY_ERROR_BUSY;
+    case EPD_ERROR_UNSUPPORTED:
+        return EPD_DISPLAY_ERROR_UNSUPPORTED;
     default:
         return EPD_DISPLAY_ERROR_BUSY;
     }
 }
 
-static void plane_fill(uint8_t *plane, bool bit_val)
+static uint16_t disp_w(const epd_display_t *disp)
 {
-    memset(plane, bit_val ? 0xFFU : 0x00U, EPD_2IN9B_PLANE_SIZE);
+    return epd_width(&disp->epd);
 }
 
-static uint16_t map_y_to_ram(uint16_t y)
+static uint16_t disp_h(const epd_display_t *disp)
 {
-    if (y >= EPD_DISPLAY_HEIGHT) {
+    return epd_height(&disp->epd);
+}
+
+static uint16_t disp_row_bytes(const epd_display_t *disp)
+{
+    return epd_bytes_per_row(&disp->epd);
+}
+
+static uint32_t disp_plane(const epd_display_t *disp)
+{
+    return epd_plane_size(&disp->epd);
+}
+
+static bool panel_flip_y(const epd_display_t *disp)
+{
+    return (disp->epd.panel != NULL) && disp->epd.panel->flip_y;
+}
+
+static void plane_fill(uint8_t *plane, uint32_t size, bool bit_val)
+{
+    if (plane == NULL || size == 0U) {
+        return;
+    }
+    memset(plane, bit_val ? 0xFFU : 0x00U, size);
+}
+
+static uint16_t map_y_to_ram(const epd_display_t *disp, uint16_t y)
+{
+    const uint16_t h = disp_h(disp);
+
+    if (!panel_flip_y(disp) || y >= h) {
         return y;
     }
-    return (uint16_t)((EPD_DISPLAY_HEIGHT - 1U) - y);
+    return (uint16_t)((h - 1U) - y);
 }
 
 static void set_bw_bit(epd_display_t *disp, uint16_t x, uint16_t y, bool white)
 {
-    const uint16_t ry = map_y_to_ram(y);
+    const uint16_t ry = map_y_to_ram(disp, y);
+    const uint16_t w = disp_w(disp);
+    const uint16_t h = disp_h(disp);
+    uint16_t bx;
+    uint8_t bit;
+    uint32_t idx;
+    uint8_t mask;
 
-    if (disp == NULL || x >= EPD_DISPLAY_WIDTH || ry >= EPD_DISPLAY_HEIGHT) {
+    if (disp == NULL || disp->bw == NULL || x >= w || ry >= h) {
         return;
     }
 
-    const uint16_t bx = (uint16_t)(x / 8U);
-    const uint8_t bit = (uint8_t)(7U - (x % 8U));
-    const uint32_t idx = (uint32_t)ry * EPD_2IN9B_BYTES_PER_ROW + bx;
-    const uint8_t mask = (uint8_t)(1U << bit);
+    bx = (uint16_t)(x / 8U);
+    bit = (uint8_t)(7U - (x % 8U));
+    idx = (uint32_t)ry * (uint32_t)disp_row_bytes(disp) + bx;
+    mask = (uint8_t)(1U << bit);
 
     if (white) {
         disp->bw[idx] |= mask;
@@ -61,16 +99,22 @@ static void set_bw_bit(epd_display_t *disp, uint16_t x, uint16_t y, bool white)
 
 static void set_red_bit(epd_display_t *disp, uint16_t x, uint16_t y, bool red)
 {
-    const uint16_t ry = map_y_to_ram(y);
+    const uint16_t ry = map_y_to_ram(disp, y);
+    const uint16_t w = disp_w(disp);
+    const uint16_t h = disp_h(disp);
+    uint16_t bx;
+    uint8_t bit;
+    uint32_t idx;
+    uint8_t mask;
 
-    if (disp == NULL || x >= EPD_DISPLAY_WIDTH || ry >= EPD_DISPLAY_HEIGHT) {
+    if (disp == NULL || disp->red == NULL || x >= w || ry >= h) {
         return;
     }
 
-    const uint16_t bx = (uint16_t)(x / 8U);
-    const uint8_t bit = (uint8_t)(7U - (x % 8U));
-    const uint32_t idx = (uint32_t)ry * EPD_2IN9B_BYTES_PER_ROW + bx;
-    const uint8_t mask = (uint8_t)(1U << bit);
+    bx = (uint16_t)(x / 8U);
+    bit = (uint8_t)(7U - (x % 8U));
+    idx = (uint32_t)ry * (uint32_t)disp_row_bytes(disp) + bx;
+    mask = (uint8_t)(1U << bit);
 
     if (red) {
         disp->red[idx] |= mask;
@@ -81,21 +125,24 @@ static void set_red_bit(epd_display_t *disp, uint16_t x, uint16_t y, bool red)
 
 static bool get_bw_bit(const epd_display_t *disp, uint16_t x, uint16_t y)
 {
-    const uint16_t ry = map_y_to_ram(y);
+    const uint16_t ry = map_y_to_ram(disp, y);
     const uint16_t bx = (uint16_t)(x / 8U);
     const uint8_t bit = (uint8_t)(7U - (x % 8U));
-    const uint32_t idx = (uint32_t)ry * EPD_2IN9B_BYTES_PER_ROW + bx;
+    const uint32_t idx = (uint32_t)ry * (uint32_t)disp_row_bytes(disp) + bx;
 
     return (disp->bw[idx] & (uint8_t)(1U << bit)) != 0U;
 }
 
 static bool get_red_bit(const epd_display_t *disp, uint16_t x, uint16_t y)
 {
-    const uint16_t ry = map_y_to_ram(y);
+    const uint16_t ry = map_y_to_ram(disp, y);
     const uint16_t bx = (uint16_t)(x / 8U);
     const uint8_t bit = (uint8_t)(7U - (x % 8U));
-    const uint32_t idx = (uint32_t)ry * EPD_2IN9B_BYTES_PER_ROW + bx;
+    const uint32_t idx = (uint32_t)ry * (uint32_t)disp_row_bytes(disp) + bx;
 
+    if (disp->red == NULL) {
+        return false;
+    }
     return (disp->red[idx] & (uint8_t)(1U << bit)) != 0U;
 }
 
@@ -119,14 +166,20 @@ static void apply_color_pixel(epd_display_t *disp, uint16_t x, uint16_t y, epd_c
     }
 }
 
-static void clamp_rect(uint16_t *x0, uint16_t *y0, uint16_t *x1, uint16_t *y1)
+static void clamp_rect(const epd_display_t *disp, uint16_t *x0, uint16_t *y0, uint16_t *x1,
+                       uint16_t *y1)
 {
-    if (*x1 >= EPD_DISPLAY_WIDTH) {
-        *x1 = (uint16_t)(EPD_DISPLAY_WIDTH - 1U);
+    const uint16_t w = disp_w(disp);
+    const uint16_t h = disp_h(disp);
+
+    if (*x1 >= w) {
+        *x1 = (uint16_t)(w - 1U);
     }
-    if (*y1 >= EPD_DISPLAY_HEIGHT) {
-        *y1 = (uint16_t)(EPD_DISPLAY_HEIGHT - 1U);
+    if (*y1 >= h) {
+        *y1 = (uint16_t)(h - 1U);
     }
+    (void)x0;
+    (void)y0;
 }
 
 static const unsigned char *font_glyph(char ch, epd_font_size_t size, uint8_t *glyph_bytes)
@@ -159,35 +212,59 @@ static uint8_t font_width(epd_font_size_t size)
 
 static void fill_test_pattern(epd_display_t *disp)
 {
-    const uint16_t mid_x = (uint16_t)(EPD_DISPLAY_WIDTH / 2U);
+    const uint16_t w = disp_w(disp);
+    const uint16_t h = disp_h(disp);
+    const uint16_t mid_x = (uint16_t)(w / 2U);
+    uint16_t x;
+    uint16_t y;
 
     epd_display_clear_buffer(disp, EPD_COLOR_WHITE);
 
+    if (h < 50U || mid_x == 0U) {
+        return;
+    }
+
     epd_display_fill_rect(disp, 0U, 0U, (uint16_t)(mid_x - 1U), 49U, EPD_COLOR_RED);
-    for (uint16_t x = 0U; x < EPD_DISPLAY_WIDTH; x = (uint16_t)(x + 16U)) {
+    for (x = 0U; x < w; x = (uint16_t)(x + 16U)) {
         epd_display_fill_rect(disp, x, 50U, (uint16_t)(x + 7U), 99U, EPD_COLOR_RED);
     }
 
-    epd_display_fill_rect(disp, 0U, 100U, (uint16_t)(EPD_DISPLAY_WIDTH - 1U), 149U, EPD_COLOR_BLACK);
-    epd_display_fill_rect(disp, 8U, 118U, (uint16_t)(EPD_DISPLAY_WIDTH - 9U), 131U, EPD_COLOR_RED);
-
-    epd_display_fill_rect(disp, 0U, 150U, 31U, 199U, EPD_COLOR_RED);
-    for (uint16_t y = 150U; y <= 199U; y++) {
-        for (uint16_t x = 40U; x < EPD_DISPLAY_WIDTH; x++) {
-            const bool black = (((x / 16U) + (y / 16U)) % 2U) == 0U;
-            apply_color_pixel(disp, x, y, black ? EPD_COLOR_BLACK : EPD_COLOR_WHITE);
+    if (h > 149U) {
+        epd_display_fill_rect(disp, 0U, 100U, (uint16_t)(w - 1U), 149U, EPD_COLOR_BLACK);
+        if (w > 16U) {
+            epd_display_fill_rect(disp, 8U, 118U, (uint16_t)(w - 9U), 131U, EPD_COLOR_RED);
         }
     }
 
-    epd_display_draw_rect(disp, 0U, 200U, (uint16_t)(EPD_DISPLAY_WIDTH - 1U),
-                          (uint16_t)(EPD_DISPLAY_HEIGHT - 1U), EPD_COLOR_RED);
+    if (h > 199U) {
+        epd_display_fill_rect(disp, 0U, 150U, 31U, 199U, EPD_COLOR_RED);
+        for (y = 150U; y <= 199U; y++) {
+            for (x = 40U; x < w; x++) {
+                const bool black = (((x / 16U) + (y / 16U)) % 2U) == 0U;
+                apply_color_pixel(disp, x, y, black ? EPD_COLOR_BLACK : EPD_COLOR_WHITE);
+            }
+        }
+    }
+
+    if (h > 200U) {
+        epd_display_draw_rect(disp, 0U, 200U, (uint16_t)(w - 1U), (uint16_t)(h - 1U), EPD_COLOR_RED);
+    }
 }
 
 epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_config_t *cfg)
 {
-    epd_2in9b_status_t st;
+    epd_status_t st;
+    uint32_t need;
 
-    if (disp == NULL || cfg == NULL) {
+    if (disp == NULL || cfg == NULL || cfg->epd.panel == NULL || cfg->bw == NULL) {
+        return EPD_DISPLAY_ERROR_PARAM;
+    }
+
+    need = epd_panel_plane_size(cfg->epd.panel);
+    if (cfg->plane_capacity < need) {
+        return EPD_DISPLAY_ERROR_PARAM;
+    }
+    if (cfg->epd.panel->planes >= 2U && cfg->red == NULL) {
         return EPD_DISPLAY_ERROR_PARAM;
     }
 
@@ -195,6 +272,9 @@ epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_con
         return EPD_DISPLAY_OK;
     }
 
+    disp->bw = cfg->bw;
+    disp->red = cfg->red;
+    disp->plane_capacity = cfg->plane_capacity;
     disp->power_on = cfg->power_on;
     disp->power_off = cfg->power_off;
     disp->delay_ms = cfg->epd.delay_ms;
@@ -203,16 +283,16 @@ epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_con
         disp->power_on();
     }
 
-    st = epd_2in9b_register(&disp->epd, &cfg->epd);
-    if (st != EPD_2IN9B_OK) {
+    st = epd_register(&disp->epd, &cfg->epd);
+    if (st != EPD_OK) {
         if (disp->power_off != NULL) {
             disp->power_off();
         }
         return map_status(st);
     }
 
-    st = epd_2in9b_init(&disp->epd);
-    if (st != EPD_2IN9B_OK) {
+    st = epd_init(&disp->epd);
+    if (st != EPD_OK) {
         if (disp->power_off != NULL) {
             disp->power_off();
         }
@@ -220,8 +300,8 @@ epd_display_status_t epd_display_init(epd_display_t *disp, const epd_display_con
     }
 
     if (cfg->hw_clear_on_init) {
-        st = epd_2in9b_clear(&disp->epd);
-        if (st != EPD_2IN9B_OK) {
+        st = epd_clear(&disp->epd);
+        if (st != EPD_OK) {
             if (disp->power_off != NULL) {
                 disp->power_off();
             }
@@ -241,7 +321,7 @@ epd_display_status_t epd_display_deinit(epd_display_t *disp, bool sleep)
     }
 
     if (sleep) {
-        (void)epd_2in9b_sleep(&disp->epd);
+        (void)epd_sleep(&disp->epd);
     }
 
     if (disp->power_off != NULL) {
@@ -257,24 +337,58 @@ bool epd_display_is_ready(const epd_display_t *disp)
     return (disp != NULL) && disp->ready;
 }
 
-void epd_display_clear_buffer(epd_display_t *disp, epd_color_t color)
+uint16_t epd_display_width(const epd_display_t *disp)
 {
     if (disp == NULL) {
+        return 0U;
+    }
+    return disp_w(disp);
+}
+
+uint16_t epd_display_height(const epd_display_t *disp)
+{
+    if (disp == NULL) {
+        return 0U;
+    }
+    return disp_h(disp);
+}
+
+uint16_t epd_display_bytes_per_row(const epd_display_t *disp)
+{
+    if (disp == NULL) {
+        return 0U;
+    }
+    return disp_row_bytes(disp);
+}
+
+uint32_t epd_display_plane_size(const epd_display_t *disp)
+{
+    if (disp == NULL) {
+        return 0U;
+    }
+    return disp_plane(disp);
+}
+
+void epd_display_clear_buffer(epd_display_t *disp, epd_color_t color)
+{
+    const uint32_t size = (disp != NULL) ? disp_plane(disp) : 0U;
+
+    if (disp == NULL || size == 0U) {
         return;
     }
 
     switch (color) {
     case EPD_COLOR_WHITE:
-        plane_fill(disp->bw, true);
-        plane_fill(disp->red, false);
+        plane_fill(disp->bw, size, true);
+        plane_fill(disp->red, size, false);
         break;
     case EPD_COLOR_BLACK:
-        plane_fill(disp->bw, false);
-        plane_fill(disp->red, false);
+        plane_fill(disp->bw, size, false);
+        plane_fill(disp->red, size, false);
         break;
     case EPD_COLOR_RED:
-        plane_fill(disp->bw, true);
-        plane_fill(disp->red, true);
+        plane_fill(disp->bw, size, true);
+        plane_fill(disp->red, size, true);
         break;
     default:
         break;
@@ -288,7 +402,7 @@ epd_display_status_t epd_display_clear_screen(epd_display_t *disp)
     }
 
     epd_display_clear_buffer(disp, EPD_COLOR_WHITE);
-    return map_status(epd_2in9b_clear(&disp->epd));
+    return map_status(epd_clear(&disp->epd));
 }
 
 epd_display_status_t epd_display_refresh_mono(epd_display_t *disp)
@@ -297,7 +411,7 @@ epd_display_status_t epd_display_refresh_mono(epd_display_t *disp)
         return EPD_DISPLAY_ERROR_NOT_INIT;
     }
 
-    return map_status(epd_2in9b_display_mono(&disp->epd, disp->bw));
+    return map_status(epd_display(&disp->epd, disp->bw, NULL));
 }
 
 epd_display_status_t epd_display_refresh(epd_display_t *disp)
@@ -306,7 +420,10 @@ epd_display_status_t epd_display_refresh(epd_display_t *disp)
         return EPD_DISPLAY_ERROR_NOT_INIT;
     }
 
-    return map_status(epd_2in9b_display(&disp->epd, disp->bw, disp->red));
+    if (disp->epd.panel->planes >= 2U) {
+        return map_status(epd_display(&disp->epd, disp->bw, disp->red));
+    }
+    return map_status(epd_display(&disp->epd, disp->bw, NULL));
 }
 
 void epd_display_set_pixel(epd_display_t *disp, uint16_t x, uint16_t y, epd_color_t color)
@@ -319,7 +436,7 @@ void epd_display_set_pixel(epd_display_t *disp, uint16_t x, uint16_t y, epd_colo
 
 epd_color_t epd_display_get_pixel(const epd_display_t *disp, uint16_t x, uint16_t y)
 {
-    if (disp == NULL || x >= EPD_DISPLAY_WIDTH || y >= EPD_DISPLAY_HEIGHT) {
+    if (disp == NULL || x >= disp_w(disp) || y >= disp_h(disp)) {
         return EPD_COLOR_WHITE;
     }
 
@@ -332,14 +449,17 @@ epd_color_t epd_display_get_pixel(const epd_display_t *disp, uint16_t x, uint16_
 void epd_display_fill_rect(epd_display_t *disp, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1,
                            epd_color_t color)
 {
+    uint16_t y;
+    uint16_t x;
+
     if (disp == NULL) {
         return;
     }
 
-    clamp_rect(&x0, &y0, &x1, &y1);
+    clamp_rect(disp, &x0, &y0, &x1, &y1);
 
-    for (uint16_t y = y0; y <= y1; y++) {
-        for (uint16_t x = x0; x <= x1; x++) {
+    for (y = y0; y <= y1; y++) {
+        for (x = x0; x <= x1; x++) {
             apply_color_pixel(disp, x, y, color);
         }
     }
@@ -386,14 +506,16 @@ void epd_display_draw_line(epd_display_t *disp, uint16_t x0, uint16_t y0, uint16
             break;
         }
 
-        const int16_t e2 = (int16_t)(2 * err);
-        if (e2 > -dy) {
-            err -= dy;
-            x += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y += sy;
+        {
+            const int16_t e2 = (int16_t)(2 * err);
+            if (e2 > -dy) {
+                err -= dy;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                y += sy;
+            }
         }
     }
 }
@@ -446,24 +568,28 @@ void epd_display_draw_shapes_sample(epd_display_t *disp, uint16_t x0, uint16_t y
         return;
     }
 
-    epd_display_fill_rect(disp, x0, (uint16_t)(y0 + 14U), (uint16_t)(x0 + 31U), (uint16_t)(y0 + 45U), color);
+    epd_display_fill_rect(disp, x0, (uint16_t)(y0 + 14U), (uint16_t)(x0 + 31U), (uint16_t)(y0 + 45U),
+                          color);
     epd_display_draw_rect(disp, (uint16_t)(x0 + 40U), (uint16_t)(y0 + 14U), (uint16_t)(x0 + 75U),
                           (uint16_t)(y0 + 45U), color);
-    epd_display_draw_line(disp, x0, (uint16_t)(y0 + 52U), (uint16_t)(x0 + 75U), (uint16_t)(y0 + 52U), color);
+    epd_display_draw_line(disp, x0, (uint16_t)(y0 + 52U), (uint16_t)(x0 + 75U), (uint16_t)(y0 + 52U),
+                          color);
     epd_display_draw_line(disp, (uint16_t)(x0 + 40U), (uint16_t)(y0 + 52U), (uint16_t)(x0 + 75U),
                           (uint16_t)(y0 + 79U), color);
-    epd_display_draw_line(disp, x0, (uint16_t)(y0 + 79U), (uint16_t)(x0 + 75U), (uint16_t)(y0 + 52U), color);
+    epd_display_draw_line(disp, x0, (uint16_t)(y0 + 79U), (uint16_t)(x0 + 75U), (uint16_t)(y0 + 52U),
+                          color);
 }
 
 void epd_display_gfx_demo_fill(epd_display_t *disp)
 {
     const epd_font_size_t font = EPD_FONT_12;
+    const uint16_t w = (disp != NULL) ? disp_w(disp) : 0U;
 
-    if (disp == NULL) {
+    if (disp == NULL || w == 0U) {
         return;
     }
 
-    epd_display_fill_rect(disp, 0U, 0U, 127U, 3U, EPD_COLOR_BLACK);
+    epd_display_fill_rect(disp, 0U, 0U, (uint16_t)(w - 1U), 3U, EPD_COLOR_BLACK);
     epd_display_draw_string(disp, 4U, 8U, "GFX/ICON TEST", font, EPD_COLOR_BLACK);
 
     epd_display_draw_string(disp, 4U, 24U, "SHAPES:", font, EPD_COLOR_BLACK);
@@ -471,11 +597,14 @@ void epd_display_gfx_demo_fill(epd_display_t *disp)
 
     epd_display_draw_string(disp, 4U, 110U, "ICONS:", font, EPD_COLOR_BLACK);
     epd_display_draw_gfx_asset(disp, 4U, 124U, EPD_GFX_ICON_HEART_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE);
-    epd_display_draw_gfx_asset(disp, 28U, 124U, EPD_GFX_ICON_CHECK_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE);
-    epd_display_draw_gfx_asset(disp, 52U, 124U, EPD_GFX_ICON_ARROW_16, EPD_COLOR_BLACK, EPD_COLOR_WHITE);
+    epd_display_draw_gfx_asset(disp, 28U, 124U, EPD_GFX_ICON_CHECK_16, EPD_COLOR_BLACK,
+                               EPD_COLOR_WHITE);
+    epd_display_draw_gfx_asset(disp, 52U, 124U, EPD_GFX_ICON_ARROW_16, EPD_COLOR_BLACK,
+                               EPD_COLOR_WHITE);
 
     epd_display_draw_string(disp, 4U, 146U, "BITMAP:", font, EPD_COLOR_BLACK);
-    epd_display_draw_gfx_asset(disp, 4U, 160U, EPD_GFX_BITMAP_CHECKER_32, EPD_COLOR_BLACK, EPD_COLOR_WHITE);
+    epd_display_draw_gfx_asset(disp, 4U, 160U, EPD_GFX_BITMAP_CHECKER_32, EPD_COLOR_BLACK,
+                               EPD_COLOR_WHITE);
 
     epd_display_draw_string(disp, 4U, 200U, "RED ICON:", font, EPD_COLOR_BLACK);
     epd_display_draw_gfx_asset(disp, 4U, 214U, EPD_GFX_ICON_HEART_16, EPD_COLOR_RED, EPD_COLOR_WHITE);
@@ -533,8 +662,10 @@ void epd_display_draw_string(epd_display_t *disp, uint16_t x, uint16_t y, const 
     uint16_t cx = x;
     uint16_t cy = y;
     const uint8_t step = font_width(size);
+    const uint16_t w = (disp != NULL) ? disp_w(disp) : 0U;
+    const uint16_t h = (disp != NULL) ? disp_h(disp) : 0U;
 
-    if (disp == NULL || str == NULL) {
+    if (disp == NULL || str == NULL || w == 0U) {
         return;
     }
 
@@ -547,10 +678,10 @@ void epd_display_draw_string(epd_display_t *disp, uint16_t x, uint16_t y, const 
         epd_display_draw_char(disp, cx, cy, *str, size, color);
         cx = (uint16_t)(cx + step);
 
-        if (cx > (uint16_t)(EPD_DISPLAY_WIDTH - step)) {
+        if (cx > (uint16_t)(w - step)) {
             cx = 0U;
             cy = (uint16_t)(cy + size);
-            if (cy >= EPD_DISPLAY_HEIGHT) {
+            if (cy >= h) {
                 break;
             }
         }
@@ -588,11 +719,6 @@ const uint8_t *epd_display_red_plane(const epd_display_t *disp)
         return NULL;
     }
     return disp->red;
-}
-
-uint16_t epd_display_plane_size(void)
-{
-    return (uint16_t)EPD_2IN9B_PLANE_SIZE;
 }
 
 epd_display_status_t epd_display_test_solid(epd_display_t *disp, epd_color_t color)
