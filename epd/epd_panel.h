@@ -79,6 +79,12 @@ extern const epd_panel_info_t epd_panel_ws_1in54b_v2;
 /** Waveshare 2.13" e-Paper V3，122×250 BW，SSD1680。 */
 extern const epd_panel_info_t epd_panel_ws_2in13_v3;
 
+/** Waveshare 4.2" e-Paper Module V2，400×300 BW，SSD1683。 */
+extern const epd_panel_info_t epd_panel_ws_4in2_v2;
+
+/** Waveshare 4.2" e-Paper (B) V2，400×300 BWR，SSD1683。 */
+extern const epd_panel_info_t epd_panel_ws_4in2b_v2;
+
 #ifdef __cplusplus
 }
 #endif

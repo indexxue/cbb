@@ -13,6 +13,8 @@
 | `epd_panel_ws_1in54_v2` | Waveshare 1.54" V2 | 200×200 | BW |
 | `epd_panel_ws_1in54b_v2` | Waveshare 1.54" B V2 | 200×200 | BWR |
 | `epd_panel_ws_2in13_v3` | Waveshare 2.13" V3 | 122×250 | BW |
+| `epd_panel_ws_4in2_v2` | Waveshare 4.2" V2 | 400×300 | BW |
+| `epd_panel_ws_4in2b_v2` | Waveshare 4.2" B V2 | 400×300 | BWR |
 
 VET6 工程通过 [`Common/Inc/epd_panel_select.h`](../../Common/Inc/epd_panel_select.h) 的 `EPD_PANEL_ID` 宏切换测试屏。
 
