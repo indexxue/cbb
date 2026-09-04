@@ -643,7 +643,10 @@ void epd_display_draw_char(epd_display_t *disp, uint16_t x, uint16_t y, char ch,
         temp = glyph[i];
 
         for (m = 0U; m < 8U; m++) {
-            apply_color_pixel(disp, px, py, (temp & 0x80U) != 0U ? color : EPD_COLOR_WHITE);
+            /* 仅画前景像素，背景透明，避免白底方块盖住下层黑/红 */
+            if ((temp & 0x80U) != 0U) {
+                apply_color_pixel(disp, px, py, color);
+            }
 
             temp <<= 1U;
             py++;
