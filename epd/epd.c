@@ -8,7 +8,7 @@
 
 #include <stddef.h>
 
-#define EPD_BUSY_TIMEOUT_MS  8000U
+#define EPD_BUSY_TIMEOUT_MS  25000U /* BWR 全刷常 12–20s；8s 会误报 EPD_ERROR_BUSY */
 
 static bool is_busy(const epd_t *dev)
 {
