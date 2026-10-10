@@ -26,6 +26,7 @@
 | `fd6288q` | FD6288Q | HIN/LIN（PWM） | 三相半桥栅极驱动（BLDC） |
 | `hc_sr04` | HC-SR04 / HC-SR04P | GPIO | 超声波测距（Trig + Echo） |
 | `ws2812b` | WS2812B | 单线时序 | RGB 灯带（ESP RMT 实现） |
+| `w25q` | W25Q 族 | SPI | 外扩 NOR Flash（JEDEC 自动容量，≤16MB） |
 | `xpt2046` | XPT2046 | SPI | 电阻触摸屏 |
 | `zb25vq16` | ZB25VQ16 | SPI | 外扩 NOR Flash |
 
