@@ -8,6 +8,7 @@ idf_component_register(
         "ili9341/ili9341.c"
         "st7789/st7789.c"
         "st7789/lcd.c"
+        "st7796/st7796.c"
         "gc9a01/gc9a01.c"
         "mcp4651/mcp4651.c"
         "mpu6050/mpu6050.c"
@@ -21,6 +22,7 @@ idf_component_register(
         "w25q/w25q.c"
         "xpt2046/xpt2046.c"
         "it7259/it7259.c"
+        "ft6336/ft6336.c"
         "es8311/es8311.c"
         "ov2640/ov2640.c"
     INCLUDE_DIRS
@@ -28,6 +30,7 @@ idf_component_register(
         "eeprom"
         "ili9341"
         "st7789"
+        "st7796"
         "gc9a01"
         "mcp4651"
         "mpu6050"
@@ -40,6 +43,7 @@ idf_component_register(
         "w25q"
         "xpt2046"
         "it7259"
+        "ft6336"
         "es8311"
         "ov2640"
     REQUIRES esp_driver_gpio esp_driver_rmt esp_driver_cam esp_driver_i2c esp_cam_sensor

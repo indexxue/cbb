@@ -22,12 +22,14 @@
 | `qmc5883p` | QMC5883P | I2C | 三轴磁力计 |
 | `qmi8658a` | QMI8658A | I2C / SPI | 六轴 IMU |
 | `st7789` | ST7789 | SPI | 240×135 TFT |
+| `st7796` | ST7796 | SPI | 320×480 TFT |
 | `tb6612` | TB6612FNG | GPIO / PWM | 双路电机驱动 |
 | `fd6288q` | FD6288Q | HIN/LIN（PWM） | 三相半桥栅极驱动（BLDC） |
 | `hc_sr04` | HC-SR04 / HC-SR04P | GPIO | 超声波测距（Trig + Echo） |
 | `ws2812b` | WS2812B | 单线时序 | RGB 灯带（ESP RMT 实现） |
 | `w25q` | W25Q 族 | SPI | 外扩 NOR Flash（JEDEC 自动容量，≤16MB） |
 | `xpt2046` | XPT2046 | SPI | 电阻触摸屏 |
+| `ft6336` | FT6336 | I2C | 电容触摸（最多 2 点） |
 | `zb25vq16` | ZB25VQ16 | SPI | 外扩 NOR Flash |
 
 各器件详细说明见对应子目录下的 `README.md`（新建驱动时按本文 **第四节** 模板编写）。
