@@ -17,6 +17,7 @@
 | `ina226` | INA226 | I2C | 电流/功率监视 |
 | `mcp4651` | MCP4651 | SPI | 数字电位器 |
 | `mpu6050` | MPU6050 | I2C | 六轴 IMU（旧款） |
+| `npm1300` | nPM1300 | I2C | PMIC：充电 / BUCK / LDO·LS / Ship |
 | `oled` | SSD1306 等 OLED | I2C / SPI | 单色 OLED |
 | `pn5180` | PN5180 | SPI + GPIO | 多协议 NFC 射频前端（寄存器/EEPROM/RF 场） |
 | `qmc5883p` | QMC5883P | I2C | 三轴磁力计 |

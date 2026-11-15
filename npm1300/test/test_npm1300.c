@@ -212,12 +212,33 @@ static void test_task4_charger(void)
     expect_eq_int("chg st val", (int)st, 0x11);
 }
 
+static void test_task5_ship_events(void)
+{
+    npm1300_t dev;
+    npm1300_config_t cfg = make_cfg();
+    uint8_t mask = 0u;
+
+    mock_reset();
+    memset(&dev, 0, sizeof(dev));
+    expect_eq_int("ship init", (int)npm1300_init(&dev, &cfg), (int)NPM1300_OK);
+
+    expect_eq_int("ship enter", (int)npm1300_ship_enter(&dev), (int)NPM1300_OK);
+    expect_eq_int("ship task", (int)g_regs[0x0B02], 0x01);
+
+    g_regs[0x0016] = 0xAAu;
+    expect_eq_int("evt read", (int)npm1300_event_read(&dev, &mask), (int)NPM1300_OK);
+    expect_eq_int("evt mask", (int)mask, 0xAA);
+    expect_eq_int("evt clear", (int)npm1300_event_clear(&dev, 0x0Fu), (int)NPM1300_OK);
+    expect_eq_int("evt clr reg", (int)g_regs[0x0017], 0x0F);
+}
+
 int main(void)
 {
     test_task1_bus_and_init();
     test_task2_buck();
     test_task3_ldsw();
     test_task4_charger();
+    test_task5_ship_events();
     puts("ok");
     return 0;
 }

@@ -347,20 +347,31 @@ npm1300_status_t npm1300_charger_get_status(npm1300_t *dev, uint8_t *status)
 
 npm1300_status_t npm1300_ship_enter(npm1300_t *dev)
 {
-    (void)dev;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    /* After success the device may power down; further I2C is undefined. */
+    return npm1300_reg_write(dev, NPM1300_REG_TASKENTERSHIPMODE, NPM1300_TASK_PULSE);
 }
 
 npm1300_status_t npm1300_event_read(npm1300_t *dev, uint8_t *mask)
 {
-    (void)dev;
-    (void)mask;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (mask == NULL) {
+        return NPM1300_ERROR_PARAM;
+    }
+    return npm1300_reg_read(dev, NPM1300_REG_EVENTSVBUSIN0SET, mask);
 }
 
 npm1300_status_t npm1300_event_clear(npm1300_t *dev, uint8_t mask)
 {
-    (void)dev;
-    (void)mask;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    return npm1300_reg_write(dev, NPM1300_REG_EVENTSVBUSIN0CLR, mask);
 }
