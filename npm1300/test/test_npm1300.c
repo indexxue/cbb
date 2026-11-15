@@ -11,12 +11,15 @@
 
 static uint8_t g_regs[0x10000];
 static unsigned g_write_count;
+static uint16_t g_write_addrs[32];
+static unsigned g_write_addr_n;
 static int g_fail_bus;
 
 static void mock_reset(void)
 {
     memset(g_regs, 0, sizeof(g_regs));
     g_write_count = 0u;
+    g_write_addr_n = 0u;
     g_fail_bus = 0;
 }
 
@@ -32,6 +35,9 @@ static int mock_write(uint8_t addr7, const uint8_t *data, uint16_t len)
     {
         uint16_t addr = (uint16_t)(((uint16_t)data[0] << 8) | data[1]);
         uint16_t i;
+        if (g_write_addr_n < (unsigned)(sizeof(g_write_addrs) / sizeof(g_write_addrs[0]))) {
+            g_write_addrs[g_write_addr_n++] = addr;
+        }
         for (i = 2u; i < len; i++) {
             g_regs[addr + (uint16_t)(i - 2u)] = data[i];
         }
@@ -125,9 +131,25 @@ static void test_task2_buck(void)
     memset(&dev, 0, sizeof(dev));
     expect_eq_int("buck init", (int)npm1300_init(&dev, &cfg), (int)NPM1300_OK);
 
+    g_write_addr_n = 0u;
     expect_eq_int("buck 3v0", (int)npm1300_buck_set_vout_mv(&dev, NPM1300_BUCK1, 3000u), (int)NPM1300_OK);
     expect_eq_int("normvout", (int)g_regs[0x0408], 0x14);
     expect_eq_int("swctrl buck1", (int)(g_regs[0x040F] & 0x01u), 0x01);
+    /* NORMVOUT must be programmed before enabling software VOUT control. */
+    {
+        int saw_vout = -1;
+        int saw_sw = -1;
+        unsigned i;
+        for (i = 0u; i < g_write_addr_n; i++) {
+            if (g_write_addrs[i] == 0x0408u && saw_vout < 0) {
+                saw_vout = (int)i;
+            }
+            if (g_write_addrs[i] == 0x040Fu && saw_sw < 0) {
+                saw_sw = (int)i;
+            }
+        }
+        expect_true("vout before swctrl", saw_vout >= 0 && saw_sw > saw_vout);
+    }
 
     expect_eq_int("buck range", (int)npm1300_buck_set_vout_mv(&dev, NPM1300_BUCK1, 3010u),
                   (int)NPM1300_ERROR_RANGE);

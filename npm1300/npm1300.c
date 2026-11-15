@@ -160,16 +160,18 @@ npm1300_status_t npm1300_buck_set_vout_mv(npm1300_t *dev, npm1300_buck_t buck, u
         sw_bit = NPM1300_BUCK_SWCTRL_BUCK2;
     }
 
+    /* Program NORMVOUT before enabling SWCTRL — otherwise first switch can
+     * briefly apply reset VOUT (e.g. 1.2 V) and brown out the rail. */
+    st = npm1300_reg_write(dev, vout_reg, code);
+    if (st != NPM1300_OK) {
+        return st;
+    }
     st = npm1300_reg_read(dev, NPM1300_REG_BUCKSWCTRLSEL, &swctrl);
     if (st != NPM1300_OK) {
         return st;
     }
     swctrl = (uint8_t)(swctrl | sw_bit);
-    st = npm1300_reg_write(dev, NPM1300_REG_BUCKSWCTRLSEL, swctrl);
-    if (st != NPM1300_OK) {
-        return st;
-    }
-    return npm1300_reg_write(dev, vout_reg, code);
+    return npm1300_reg_write(dev, NPM1300_REG_BUCKSWCTRLSEL, swctrl);
 }
 
 npm1300_status_t npm1300_buck_enable(npm1300_t *dev, npm1300_buck_t buck, bool on)

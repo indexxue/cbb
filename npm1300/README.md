@@ -24,7 +24,8 @@ nPM1300 集成 Type-C/VBUS 系统调节、锂电池充电、双 BUCK、双 LDO/L
 - **回调注入**：必须提供 `write` + `write_read`；`delay_ms` 可选。
 - **7 位地址**：回调参数为 7 位；STM32 HAL 用 `NPM1300_HAL_ADDR_FROM_7BIT(addr)`。
 - **电压/电流**：严格表匹配；非法 mV/mA → `NPM1300_ERROR_RANGE`（不就近钳位）。
-- **`buck_set_vout_mv`**：写 NORMVOUT 前会置对应 `BUCKSWCTRLSEL` 软件位，否则仍跟 VSET 脚。
+- **`buck_set_vout_mv`**：先写 NORMVOUT，再置 `BUCKSWCTRLSEL` 软件位（避免先切 SW 时落到复位电压）。
+- **改 ICHG**：PS 要求在充电器 **禁用** 时改 `BCHGISET*`，再重新使能才生效；请先 `charger_enable(false)` → `set_ichg_ma` → `charger_enable(true)`。
 
 ## 文件
 
