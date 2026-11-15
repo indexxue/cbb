@@ -33,7 +33,6 @@ nPM1300 集成 Type-C/VBUS 系统调节、锂电池充电、双 BUCK、双 LDO/L
 |------|------|
 | `npm1300.h` | 类型、API |
 | `npm1300.c` | 实现 |
-| `test/test_npm1300.c` | 主机 mock I2C 测试（WSL/`gcc`） |
 
 ## API 概览
 
@@ -97,21 +96,12 @@ npm1300_init(&npm, &cfg);
 npm1300_buck_set_vout_mv(&npm, NPM1300_BUCK1, 3000);
 ```
 
-## 主机测试
-
-```bash
-# WSL / Linux
-gcc -std=c11 -Wall -Wextra -I cbb/npm1300 \
-  cbb/npm1300/npm1300.c cbb/npm1300/test/test_npm1300.c \
-  -o cbb/npm1300/test/test_npm1300
-./cbb/npm1300/test/test_npm1300
-```
-
-## 编入工程
+## 编入工程 / 上板验证
 
 1. 加入 `npm1300.c` 与 Include Path `cbb/npm1300`
-2. 板级实现回调；勿在 cbb 内引用 HAL/`Common`
-3. 产品轨门控与充电策略放板级
+2. 板级实现 I2C 回调；勿在 cbb 内引用 HAL/`Common`
+3. 本仓冒烟：`projects/ink_panel`（`i2c21` P1.11/P1.12 → nPM1300；`i2c20` 与 `uart20` 互斥）
+4. 产品轨门控与充电策略放板级
 
 ## 参考
 
