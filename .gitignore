@@ -25,3 +25,7 @@ Release/
 *~
 *.swp
 *.bak
+
+npm1300/test/test_npm1300
+npm1300/test/test_npm1300.exe
+
