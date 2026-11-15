@@ -177,11 +177,47 @@ static void test_task3_ldsw(void)
     expect_eq_int("ldsw st val", (int)st, 0x55);
 }
 
+static void test_task4_charger(void)
+{
+    npm1300_t dev;
+    npm1300_config_t cfg = make_cfg();
+    uint8_t st = 0u;
+
+    mock_reset();
+    memset(&dev, 0, sizeof(dev));
+    expect_eq_int("chg init", (int)npm1300_init(&dev, &cfg), (int)NPM1300_OK);
+
+    expect_eq_int("ichg 200", (int)npm1300_charger_set_ichg_ma(&dev, 200u), (int)NPM1300_OK);
+    expect_eq_int("iset msb 200", (int)g_regs[0x0308], 0x32);
+    expect_eq_int("iset lsb 200", (int)g_regs[0x0309], 0x00);
+
+    expect_eq_int("ichg 300", (int)npm1300_charger_set_ichg_ma(&dev, 300u), (int)NPM1300_OK);
+    expect_eq_int("iset msb 300", (int)g_regs[0x0308], 0x4B);
+    expect_eq_int("iset lsb 300", (int)g_regs[0x0309], 0x00);
+
+    expect_eq_int("ichg range", (int)npm1300_charger_set_ichg_ma(&dev, 201u), (int)NPM1300_ERROR_RANGE);
+    expect_eq_int("ichg low", (int)npm1300_charger_set_ichg_ma(&dev, 30u), (int)NPM1300_ERROR_RANGE);
+
+    expect_eq_int("vterm 4200", (int)npm1300_charger_set_vterm_mv(&dev, 4200u), (int)NPM1300_OK);
+    expect_eq_int("vterm reg", (int)g_regs[0x030C], 0x08);
+    expect_eq_int("vterm range", (int)npm1300_charger_set_vterm_mv(&dev, 4210u), (int)NPM1300_ERROR_RANGE);
+
+    expect_eq_int("chg en", (int)npm1300_charger_enable(&dev, true), (int)NPM1300_OK);
+    expect_eq_int("en set", (int)g_regs[0x0304], 0x01);
+    expect_eq_int("chg dis", (int)npm1300_charger_enable(&dev, false), (int)NPM1300_OK);
+    expect_eq_int("en clr", (int)g_regs[0x0305], 0x01);
+
+    g_regs[0x0334] = 0x11u;
+    expect_eq_int("chg status", (int)npm1300_charger_get_status(&dev, &st), (int)NPM1300_OK);
+    expect_eq_int("chg st val", (int)st, 0x11);
+}
+
 int main(void)
 {
     test_task1_bus_and_init();
     test_task2_buck();
     test_task3_ldsw();
+    test_task4_charger();
     puts("ok");
     return 0;
 }

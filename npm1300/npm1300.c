@@ -277,32 +277,72 @@ npm1300_status_t npm1300_ldsw_get_status(npm1300_t *dev, npm1300_ldsw_t idx, uin
     return npm1300_reg_read(dev, NPM1300_REG_LDSWSTATUS, status);
 }
 
+static const uint16_t npm1300_vterm_mv_table[] = {
+    3500u, 3550u, 3600u, 3650u, 4000u, 4050u, 4100u, 4150u,
+    4200u, 4250u, 4300u, 4350u, 4400u, 4450u
+};
+
 npm1300_status_t npm1300_charger_set_ichg_ma(npm1300_t *dev, uint16_t ma)
 {
-    (void)dev;
-    (void)ma;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint32_t code;
+    uint8_t msb;
+    uint8_t lsb;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (ma < 32u || ma > 800u || (ma % 2u) != 0u) {
+        return NPM1300_ERROR_RANGE;
+    }
+
+    code = ((uint32_t)ma * 1000u) / 2000u;
+    msb = (uint8_t)(code >> 1);
+    lsb = (uint8_t)(code & 1u);
+
+    st = npm1300_reg_write(dev, NPM1300_REG_BCHGISETMSB, msb);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    return npm1300_reg_write(dev, NPM1300_REG_BCHGISETLSB, lsb);
 }
 
 npm1300_status_t npm1300_charger_set_vterm_mv(npm1300_t *dev, uint16_t mv)
 {
-    (void)dev;
-    (void)mv;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint8_t i;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+
+    for (i = 0u; i < (uint8_t)(sizeof(npm1300_vterm_mv_table) / sizeof(npm1300_vterm_mv_table[0])); i++) {
+        if (npm1300_vterm_mv_table[i] == mv) {
+            return npm1300_reg_write(dev, NPM1300_REG_BCHGVTERM, i);
+        }
+    }
+    return NPM1300_ERROR_RANGE;
 }
 
 npm1300_status_t npm1300_charger_enable(npm1300_t *dev, bool on)
 {
-    (void)dev;
-    (void)on;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint16_t reg;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    reg = on ? NPM1300_REG_BCHGENABLESET : NPM1300_REG_BCHGENABLECLR;
+    return npm1300_reg_write(dev, reg, NPM1300_TASK_PULSE);
 }
 
 npm1300_status_t npm1300_charger_get_status(npm1300_t *dev, uint8_t *status)
 {
-    (void)dev;
-    (void)status;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (status == NULL) {
+        return NPM1300_ERROR_PARAM;
+    }
+    return npm1300_reg_read(dev, NPM1300_REG_BCHGCHARGESTATUS, status);
 }
 
 npm1300_status_t npm1300_ship_enter(npm1300_t *dev)
