@@ -206,34 +206,75 @@ npm1300_status_t npm1300_buck_get_status(npm1300_t *dev, npm1300_buck_t buck, ui
 
 npm1300_status_t npm1300_ldsw_set_mode(npm1300_t *dev, npm1300_ldsw_t idx, npm1300_ldsw_mode_t mode)
 {
-    (void)dev;
-    (void)idx;
-    (void)mode;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint16_t reg;
+    uint8_t val;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (idx != NPM1300_LDSW1 && idx != NPM1300_LDSW2) {
+        return NPM1300_ERROR_PARAM;
+    }
+    if (mode != NPM1300_LDSW_MODE_LOADSW && mode != NPM1300_LDSW_MODE_LDO) {
+        return NPM1300_ERROR_PARAM;
+    }
+
+    reg = (idx == NPM1300_LDSW1) ? NPM1300_REG_LDSW1LDOSEL : NPM1300_REG_LDSW2LDOSEL;
+    val = (mode == NPM1300_LDSW_MODE_LDO) ? 0x01u : 0x00u;
+    return npm1300_reg_write(dev, reg, val);
 }
 
 npm1300_status_t npm1300_ldsw_set_vout_mv(npm1300_t *dev, npm1300_ldsw_t idx, uint16_t mv)
 {
-    (void)dev;
-    (void)idx;
-    (void)mv;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint8_t code = 0u;
+    uint16_t reg;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (idx != NPM1300_LDSW1 && idx != NPM1300_LDSW2) {
+        return NPM1300_ERROR_PARAM;
+    }
+
+    st = npm1300_mv_to_buck_code(mv, &code); /* same 1.0–3.3 V / 0.1 V table as BUCK */
+    if (st != NPM1300_OK) {
+        return st;
+    }
+
+    reg = (idx == NPM1300_LDSW1) ? NPM1300_REG_LDSW1VOUTSEL : NPM1300_REG_LDSW2VOUTSEL;
+    return npm1300_reg_write(dev, reg, code);
 }
 
 npm1300_status_t npm1300_ldsw_enable(npm1300_t *dev, npm1300_ldsw_t idx, bool on)
 {
-    (void)dev;
-    (void)idx;
-    (void)on;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint16_t reg;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (idx != NPM1300_LDSW1 && idx != NPM1300_LDSW2) {
+        return NPM1300_ERROR_PARAM;
+    }
+
+    if (idx == NPM1300_LDSW1) {
+        reg = on ? NPM1300_REG_LDSW1SET : NPM1300_REG_LDSW1CLR;
+    } else {
+        reg = on ? NPM1300_REG_LDSW2SET : NPM1300_REG_LDSW2CLR;
+    }
+    return npm1300_reg_write(dev, reg, NPM1300_TASK_PULSE);
 }
 
 npm1300_status_t npm1300_ldsw_get_status(npm1300_t *dev, npm1300_ldsw_t idx, uint8_t *status)
 {
-    (void)dev;
-    (void)idx;
-    (void)status;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (status == NULL || (idx != NPM1300_LDSW1 && idx != NPM1300_LDSW2)) {
+        return NPM1300_ERROR_PARAM;
+    }
+    (void)idx; /* shared LDSWSTATUS */
+    return npm1300_reg_read(dev, NPM1300_REG_LDSWSTATUS, status);
 }
 
 npm1300_status_t npm1300_charger_set_ichg_ma(npm1300_t *dev, uint16_t ma)

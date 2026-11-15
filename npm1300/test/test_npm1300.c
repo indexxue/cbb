@@ -145,10 +145,43 @@ static void test_task2_buck(void)
     expect_eq_int("status val", (int)st, 0x3C);
 }
 
+static void test_task3_ldsw(void)
+{
+    npm1300_t dev;
+    npm1300_config_t cfg = make_cfg();
+    uint8_t st = 0u;
+
+    mock_reset();
+    memset(&dev, 0, sizeof(dev));
+    expect_eq_int("ldsw init", (int)npm1300_init(&dev, &cfg), (int)NPM1300_OK);
+
+    expect_eq_int("ldo mode", (int)npm1300_ldsw_set_mode(&dev, NPM1300_LDSW1, NPM1300_LDSW_MODE_LDO),
+                  (int)NPM1300_OK);
+    expect_eq_int("ldosel1", (int)g_regs[0x0808], 0x01);
+    expect_eq_int("loadsw mode", (int)npm1300_ldsw_set_mode(&dev, NPM1300_LDSW1, NPM1300_LDSW_MODE_LOADSW),
+                  (int)NPM1300_OK);
+    expect_eq_int("ldosel1 ls", (int)g_regs[0x0808], 0x00);
+
+    expect_eq_int("ldo 3v0", (int)npm1300_ldsw_set_vout_mv(&dev, NPM1300_LDSW1, 3000u), (int)NPM1300_OK);
+    expect_eq_int("voutsel1", (int)g_regs[0x080C], 0x14);
+    expect_eq_int("ldo range", (int)npm1300_ldsw_set_vout_mv(&dev, NPM1300_LDSW1, 3010u),
+                  (int)NPM1300_ERROR_RANGE);
+
+    expect_eq_int("ls2 en", (int)npm1300_ldsw_enable(&dev, NPM1300_LDSW2, true), (int)NPM1300_OK);
+    expect_eq_int("ls2 set", (int)g_regs[0x0802], 0x01);
+    expect_eq_int("ls2 dis", (int)npm1300_ldsw_enable(&dev, NPM1300_LDSW2, false), (int)NPM1300_OK);
+    expect_eq_int("ls2 clr", (int)g_regs[0x0803], 0x01);
+
+    g_regs[0x0804] = 0x55u;
+    expect_eq_int("ldsw status", (int)npm1300_ldsw_get_status(&dev, NPM1300_LDSW2, &st), (int)NPM1300_OK);
+    expect_eq_int("ldsw st val", (int)st, 0x55);
+}
+
 int main(void)
 {
     test_task1_bus_and_init();
     test_task2_buck();
+    test_task3_ldsw();
     puts("ok");
     return 0;
 }
