@@ -115,9 +115,40 @@ static void test_task1_bus_and_init(void)
     expect_true("not init after fail", !dev.initialized);
 }
 
+static void test_task2_buck(void)
+{
+    npm1300_t dev;
+    npm1300_config_t cfg = make_cfg();
+    uint8_t st = 0u;
+
+    mock_reset();
+    memset(&dev, 0, sizeof(dev));
+    expect_eq_int("buck init", (int)npm1300_init(&dev, &cfg), (int)NPM1300_OK);
+
+    expect_eq_int("buck 3v0", (int)npm1300_buck_set_vout_mv(&dev, NPM1300_BUCK1, 3000u), (int)NPM1300_OK);
+    expect_eq_int("normvout", (int)g_regs[0x0408], 0x14);
+    expect_eq_int("swctrl buck1", (int)(g_regs[0x040F] & 0x01u), 0x01);
+
+    expect_eq_int("buck range", (int)npm1300_buck_set_vout_mv(&dev, NPM1300_BUCK1, 3010u),
+                  (int)NPM1300_ERROR_RANGE);
+
+    expect_eq_int("buck en", (int)npm1300_buck_enable(&dev, NPM1300_BUCK1, true), (int)NPM1300_OK);
+    expect_eq_int("ena set", (int)g_regs[0x0400], 0x01);
+    expect_eq_int("buck dis", (int)npm1300_buck_enable(&dev, NPM1300_BUCK1, false), (int)NPM1300_OK);
+    expect_eq_int("ena clr", (int)g_regs[0x0401], 0x01);
+
+    expect_eq_int("bad buck", (int)npm1300_buck_enable(&dev, (npm1300_buck_t)0, true),
+                  (int)NPM1300_ERROR_PARAM);
+
+    g_regs[0x0434] = 0x3Cu;
+    expect_eq_int("buck status", (int)npm1300_buck_get_status(&dev, NPM1300_BUCK1, &st), (int)NPM1300_OK);
+    expect_eq_int("status val", (int)st, 0x3C);
+}
+
 int main(void)
 {
     test_task1_bus_and_init();
+    test_task2_buck();
     puts("ok");
     return 0;
 }

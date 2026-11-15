@@ -116,30 +116,92 @@ npm1300_status_t npm1300_init(npm1300_t *dev, const npm1300_config_t *cfg)
     return NPM1300_OK;
 }
 
-/* ---- stubs filled in later tasks ---- */
+static npm1300_status_t npm1300_mv_to_buck_code(uint16_t mv, uint8_t *code)
+{
+    uint16_t c;
+
+    if (code == NULL) {
+        return NPM1300_ERROR_PARAM;
+    }
+    if (mv < 1000u || mv > 3300u || ((mv - 1000u) % 100u) != 0u) {
+        return NPM1300_ERROR_RANGE;
+    }
+    c = (uint16_t)((mv - 1000u) / 100u);
+    *code = (uint8_t)c;
+    return NPM1300_OK;
+}
 
 npm1300_status_t npm1300_buck_set_vout_mv(npm1300_t *dev, npm1300_buck_t buck, uint16_t mv)
 {
-    (void)dev;
-    (void)buck;
-    (void)mv;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint8_t code = 0u;
+    uint8_t swctrl = 0u;
+    uint16_t vout_reg;
+    uint8_t sw_bit;
+    npm1300_status_t st;
+
+    st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (buck != NPM1300_BUCK1 && buck != NPM1300_BUCK2) {
+        return NPM1300_ERROR_PARAM;
+    }
+
+    st = npm1300_mv_to_buck_code(mv, &code);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+
+    if (buck == NPM1300_BUCK1) {
+        vout_reg = NPM1300_REG_BUCK1NORMVOUT;
+        sw_bit = NPM1300_BUCK_SWCTRL_BUCK1;
+    } else {
+        vout_reg = NPM1300_REG_BUCK2NORMVOUT;
+        sw_bit = NPM1300_BUCK_SWCTRL_BUCK2;
+    }
+
+    st = npm1300_reg_read(dev, NPM1300_REG_BUCKSWCTRLSEL, &swctrl);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    swctrl = (uint8_t)(swctrl | sw_bit);
+    st = npm1300_reg_write(dev, NPM1300_REG_BUCKSWCTRLSEL, swctrl);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    return npm1300_reg_write(dev, vout_reg, code);
 }
 
 npm1300_status_t npm1300_buck_enable(npm1300_t *dev, npm1300_buck_t buck, bool on)
 {
-    (void)dev;
-    (void)buck;
-    (void)on;
-    return NPM1300_ERROR_UNSUPPORTED;
+    uint16_t reg;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (buck != NPM1300_BUCK1 && buck != NPM1300_BUCK2) {
+        return NPM1300_ERROR_PARAM;
+    }
+
+    if (buck == NPM1300_BUCK1) {
+        reg = on ? NPM1300_REG_BUCK1ENASET : NPM1300_REG_BUCK1ENACLR;
+    } else {
+        reg = on ? NPM1300_REG_BUCK2ENASET : NPM1300_REG_BUCK2ENACLR;
+    }
+    return npm1300_reg_write(dev, reg, NPM1300_TASK_PULSE);
 }
 
 npm1300_status_t npm1300_buck_get_status(npm1300_t *dev, npm1300_buck_t buck, uint8_t *status)
 {
-    (void)dev;
-    (void)buck;
-    (void)status;
-    return NPM1300_ERROR_UNSUPPORTED;
+    npm1300_status_t st = npm1300_check_bus(dev);
+    if (st != NPM1300_OK) {
+        return st;
+    }
+    if (status == NULL || (buck != NPM1300_BUCK1 && buck != NPM1300_BUCK2)) {
+        return NPM1300_ERROR_PARAM;
+    }
+    (void)buck; /* shared BUCKSTATUS register */
+    return npm1300_reg_read(dev, NPM1300_REG_BUCKSTATUS, status);
 }
 
 npm1300_status_t npm1300_ldsw_set_mode(npm1300_t *dev, npm1300_ldsw_t idx, npm1300_ldsw_mode_t mode)
