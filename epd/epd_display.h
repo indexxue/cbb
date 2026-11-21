@@ -110,6 +110,13 @@ epd_display_status_t epd_display_test_solid(epd_display_t *disp, epd_color_t col
 void epd_display_test_pattern_fill(epd_display_t *disp);
 epd_display_status_t epd_display_test_run(epd_display_t *disp);
 
+/**
+ * 产品 BWR demo 帧（与 eink_tag 同款布局）：白底 + 顶栏 + 黑/红/白三列 + 文字。
+ * 只写 MCU 缓冲，不刷屏；title/subtitle/panel_name 可为 NULL。
+ */
+void epd_display_demo_bwr_fill(epd_display_t *disp, const char *title, const char *subtitle,
+			       const char *panel_name);
+
 #ifdef __cplusplus
 }
 #endif

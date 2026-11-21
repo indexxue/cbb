@@ -782,3 +782,64 @@ epd_display_status_t epd_display_test_run(epd_display_t *disp)
     epd_display_test_pattern_fill(disp);
     return epd_display_refresh(disp);
 }
+
+void epd_display_demo_bwr_fill(epd_display_t *disp, const char *title, const char *subtitle,
+			       const char *panel_name)
+{
+	const uint16_t w = (disp != NULL) ? disp_w(disp) : 0U;
+	const uint16_t h = (disp != NULL) ? disp_h(disp) : 0U;
+	const uint16_t x_max = (uint16_t)(w - 1U);
+	const uint16_t y_max = (uint16_t)(h - 1U);
+	const uint16_t col_w = (uint16_t)(w / 3U);
+	const uint16_t title_h = 40U;
+	const uint16_t band_y0 = 72U;
+	const uint16_t band_y1 = (uint16_t)(h - 56U);
+	const uint16_t label_y = (uint16_t)(band_y0 + 16U);
+	const uint16_t sample_y = (uint16_t)(band_y0 + 48U);
+
+	if ((disp == NULL) || (w == 0U) || (h == 0U)) {
+		return;
+	}
+
+	if (title == NULL) {
+		title = "EPD";
+	}
+	if (subtitle == NULL) {
+		subtitle = "BWR demo";
+	}
+	if (panel_name == NULL) {
+		panel_name = "EPD";
+	}
+
+	epd_display_clear_buffer(disp, EPD_COLOR_WHITE);
+
+	epd_display_fill_rect(disp, 0U, 0U, x_max, (uint16_t)(title_h - 1U), EPD_COLOR_BLACK);
+	epd_display_draw_string(disp, 4U, 6U, title, EPD_FONT_16, EPD_COLOR_WHITE);
+	epd_display_draw_string(disp, 4U, 24U, subtitle, EPD_FONT_12, EPD_COLOR_WHITE);
+
+	epd_display_draw_string(disp, 4U, 48U, "Hello nRF54L15!", EPD_FONT_16, EPD_COLOR_BLACK);
+
+	epd_display_fill_rect(disp, 0U, band_y0, (uint16_t)(col_w - 2U), band_y1, EPD_COLOR_BLACK);
+	epd_display_draw_string(disp, 4U, label_y, "BLACK", EPD_FONT_12, EPD_COLOR_WHITE);
+	epd_display_draw_string(disp, 4U, sample_y, "ABC", EPD_FONT_16, EPD_COLOR_WHITE);
+
+	epd_display_fill_rect(disp, col_w, band_y0, (uint16_t)(col_w * 2U - 2U), band_y1,
+			      EPD_COLOR_RED);
+	epd_display_draw_string(disp, (uint16_t)(col_w + 4U), label_y, "RED", EPD_FONT_12,
+				EPD_COLOR_WHITE);
+	epd_display_draw_string(disp, (uint16_t)(col_w + 4U), sample_y, "123", EPD_FONT_16,
+				EPD_COLOR_WHITE);
+
+	epd_display_fill_rect(disp, (uint16_t)(col_w * 2U), band_y0, x_max, band_y1, EPD_COLOR_WHITE);
+	epd_display_draw_rect(disp, (uint16_t)(col_w * 2U), band_y0, x_max, band_y1, EPD_COLOR_BLACK);
+	epd_display_draw_string(disp, (uint16_t)(col_w * 2U + 2U), label_y, "WHITE", EPD_FONT_12,
+				EPD_COLOR_BLACK);
+	epd_display_draw_string(disp, (uint16_t)(col_w * 2U + 2U), sample_y, "XYZ", EPD_FONT_16,
+				EPD_COLOR_BLACK);
+
+	epd_display_draw_string(disp, 4U, (uint16_t)(band_y1 + 8U), "BLACK / RED / WHITE",
+				EPD_FONT_12, EPD_COLOR_BLACK);
+	epd_display_draw_string(disp, 4U, (uint16_t)(band_y1 + 24U), panel_name, EPD_FONT_12,
+				EPD_COLOR_RED);
+	epd_display_draw_rect(disp, 0U, 0U, x_max, y_max, EPD_COLOR_BLACK);
+}

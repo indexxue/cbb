@@ -8,7 +8,7 @@
 
 #include <stddef.h>
 
-#define EPD_BUSY_TIMEOUT_MS  25000U /* BWR 全刷常 12–20s；8s 会误报 EPD_ERROR_BUSY */
+#define EPD_BUSY_TIMEOUT_MS  40000U /* 4.2" BWR 全刷可 >25s；过短会假 BUSY_TIMEOUT */
 
 static bool is_busy(const epd_t *dev)
 {
@@ -123,6 +123,7 @@ void epd_bus_write_plane_fill(epd_t *dev, uint8_t cmd, uint8_t fill, uint32_t pl
         chunk[i] = fill;
     }
 
+    /* 与 eink_tag 验证路径一致：cmd 后按块 write_data_buf（每块一次 CS） */
     epd_bus_write_cmd(dev, cmd);
     while (remain > 0U) {
         uint16_t n = (remain > (uint32_t)sizeof(chunk)) ? (uint16_t)sizeof(chunk) : (uint16_t)remain;
@@ -202,6 +203,11 @@ epd_status_t epd_wait_idle(epd_t *dev)
         return st;
     }
     if (dev->read_busy == NULL) {
+        /*
+         * BUSY 不可用时不能立刻返回：init/SWRESET 后面板仍需结算时间。
+         * turn_on_display 另有 ~16s；此处给短 settle，避免 init 在 200ms 内“假成功”。
+         */
+        epd_bus_delay_ms(dev, 500U);
         return EPD_OK;
     }
 
