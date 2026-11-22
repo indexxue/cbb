@@ -64,6 +64,10 @@ epd_status_t epd_register(epd_t *dev, const epd_config_t *cfg);
 epd_status_t epd_init(epd_t *dev);
 epd_status_t epd_clear(epd_t *dev);
 epd_status_t epd_display(epd_t *dev, const uint8_t *bw, const uint8_t *red);
+/** 写控制器 RAM + Activate，不等 BUSY（屏自有显存后可释放主机平面） */
+epd_status_t epd_display_start(epd_t *dev, const uint8_t *bw, const uint8_t *red);
+/** 等全刷结束（BUSY 或固定 ~16s） */
+epd_status_t epd_display_finish(epd_t *dev);
 epd_status_t epd_sleep(epd_t *dev);
 epd_status_t epd_wait_idle(epd_t *dev);
 bool epd_is_initialized(const epd_t *dev);
@@ -80,6 +84,8 @@ void epd_bus_hw_reset(epd_t *dev, uint32_t hold_ms, uint32_t settle_ms);
 void epd_bus_write_cmd(epd_t *dev, uint8_t cmd);
 void epd_bus_write_data(epd_t *dev, uint8_t data);
 void epd_bus_write_data_buf(epd_t *dev, const uint8_t *buf, uint16_t len);
+epd_status_t epd_bus_turn_on_display_kick(epd_t *dev, uint8_t ctrl);
+epd_status_t epd_bus_display_update_wait(epd_t *dev);
 epd_status_t epd_bus_turn_on_display(epd_t *dev, uint8_t ctrl);
 void epd_bus_write_plane_fill(epd_t *dev, uint8_t cmd, uint8_t fill, uint32_t plane_size);
 void epd_bus_write_plane(epd_t *dev, uint8_t cmd, const uint8_t *plane, uint32_t plane_size,

@@ -98,19 +98,37 @@ void epd_bus_write_data_buf(epd_t *dev, const uint8_t *buf, uint16_t len)
     cs_high(dev);
 }
 
-epd_status_t epd_bus_turn_on_display(epd_t *dev, uint8_t ctrl)
+epd_status_t epd_bus_turn_on_display_kick(epd_t *dev, uint8_t ctrl)
 {
     if (ctrl != 0U) {
         epd_bus_write_cmd(dev, 0x22U);
         epd_bus_write_data(dev, ctrl);
     }
     epd_bus_write_cmd(dev, 0x20U);
+    return EPD_OK;
+}
+
+epd_status_t epd_bus_display_update_wait(epd_t *dev)
+{
+    if (dev == NULL) {
+        return EPD_ERROR_PARAM;
+    }
     if (dev->read_busy != NULL) {
         return epd_wait_idle(dev);
     }
     /* BUSY 不可用时：BWR 全刷约 15s */
     epd_bus_delay_ms(dev, 16000U);
     return EPD_OK;
+}
+
+epd_status_t epd_bus_turn_on_display(epd_t *dev, uint8_t ctrl)
+{
+    epd_status_t st = epd_bus_turn_on_display_kick(dev, ctrl);
+
+    if (st != EPD_OK) {
+        return st;
+    }
+    return epd_bus_display_update_wait(dev);
 }
 
 void epd_bus_write_plane_fill(epd_t *dev, uint8_t cmd, uint8_t fill, uint32_t plane_size)
@@ -255,7 +273,7 @@ epd_status_t epd_clear(epd_t *dev)
     return dev->panel->clear(dev);
 }
 
-epd_status_t epd_display(epd_t *dev, const uint8_t *bw, const uint8_t *red)
+epd_status_t epd_display_start(epd_t *dev, const uint8_t *bw, const uint8_t *red)
 {
     epd_status_t st = epd_bus_check(dev, true);
 
@@ -266,6 +284,26 @@ epd_status_t epd_display(epd_t *dev, const uint8_t *bw, const uint8_t *red)
         return (dev->panel->display == NULL) ? EPD_ERROR_UNSUPPORTED : EPD_ERROR_PARAM;
     }
     return dev->panel->display(dev, bw, red);
+}
+
+epd_status_t epd_display_finish(epd_t *dev)
+{
+    epd_status_t st = epd_bus_check(dev, false);
+
+    if (st != EPD_OK) {
+        return st;
+    }
+    return epd_bus_display_update_wait(dev);
+}
+
+epd_status_t epd_display(epd_t *dev, const uint8_t *bw, const uint8_t *red)
+{
+    epd_status_t st = epd_display_start(dev, bw, red);
+
+    if (st != EPD_OK) {
+        return st;
+    }
+    return epd_display_finish(dev);
 }
 
 epd_status_t epd_sleep(epd_t *dev)

@@ -74,6 +74,8 @@ void epd_display_clear_buffer(epd_display_t *disp, epd_color_t color);
 epd_display_status_t epd_display_clear_screen(epd_display_t *disp);
 epd_display_status_t epd_display_refresh_mono(epd_display_t *disp);
 epd_display_status_t epd_display_refresh(epd_display_t *disp);
+epd_display_status_t epd_display_refresh_start(epd_display_t *disp);
+epd_display_status_t epd_display_refresh_finish(epd_display_t *disp);
 
 void epd_display_set_pixel(epd_display_t *disp, uint16_t x, uint16_t y, epd_color_t color);
 epd_color_t epd_display_get_pixel(const epd_display_t *disp, uint16_t x, uint16_t y);

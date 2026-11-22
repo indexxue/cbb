@@ -104,7 +104,8 @@ static epd_status_t panel_display(epd_t *dev, const uint8_t *bw, const uint8_t *
         epd_bus_write_plane_fill(dev, 0x26U, 0x00U, plane);
     }
 
-    return epd_bus_turn_on_display(dev, UPDATE_FULL);
+    /* 只 Activate；BUSY 由 epd_display_finish / turn_on 等待 */
+    return epd_bus_turn_on_display_kick(dev, UPDATE_FULL);
 }
 
 static epd_status_t panel_sleep(epd_t *dev)

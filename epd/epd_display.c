@@ -426,6 +426,26 @@ epd_display_status_t epd_display_refresh(epd_display_t *disp)
     return map_status(epd_display(&disp->epd, disp->bw, NULL));
 }
 
+epd_display_status_t epd_display_refresh_start(epd_display_t *disp)
+{
+    if (disp == NULL || !disp->ready) {
+        return EPD_DISPLAY_ERROR_NOT_INIT;
+    }
+
+    if (disp->epd.panel->planes >= 2U) {
+        return map_status(epd_display_start(&disp->epd, disp->bw, disp->red));
+    }
+    return map_status(epd_display_start(&disp->epd, disp->bw, NULL));
+}
+
+epd_display_status_t epd_display_refresh_finish(epd_display_t *disp)
+{
+    if (disp == NULL || !disp->ready) {
+        return EPD_DISPLAY_ERROR_NOT_INIT;
+    }
+    return map_status(epd_display_finish(&disp->epd));
+}
+
 void epd_display_set_pixel(epd_display_t *disp, uint16_t x, uint16_t y, epd_color_t color)
 {
     if (disp == NULL) {
